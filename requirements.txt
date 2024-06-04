@@ -3,5 +3,10 @@ google-cloud-bigquery
 google-auth
 google-auth-oauthlib
 google-auth-httplib2
+openpyxl
+xlrd
+python-dotenv
+db-dtypes
+xlsxwriter
 plotly
 statsmodels
