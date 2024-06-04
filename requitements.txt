@@ -1,6 +1,7 @@
 streamlit
-python >= 3.12
 google-cloud-bigquery
 google-auth
 google-auth-oauthlib
 google-auth-httplib2
+plotly
+statsmodels
