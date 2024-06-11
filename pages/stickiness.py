@@ -8,7 +8,6 @@ import plotly.express as px
 from statsmodels.tsa.arima.model import ARIMA
 from google.oauth2 import service_account
 
-
 st.set_page_config(
     page_title="Kigo - Stickiness",
     layout="wide"
@@ -21,6 +20,11 @@ credentials = service_account.Credentials.from_service_account_info(
     st.secrets["gcp_service_account"]
 )
 client = bigquery.Client(credentials=credentials)
+
+# Cache the query results
+@st.cache_data(ttl=600)
+def fetch_data(query):
+    return client.query(query).to_dataframe()
 
 # OPERACIONES GENERALES
 operaciones_gen = """
@@ -67,22 +71,23 @@ WITH CombinetTable AS (
     ORDER BY month;
 """
 
-df_transacciones_general = client.query(transacciones_gen).to_dataframe()
+df_transacciones_general = fetch_data(transacciones_gen)
 trans_last_month = df_transacciones_general['Transacciones'].iloc[-3]
-trans_actural = df_transacciones_general['Transacciones'].iloc[-2]
+trans_actual = df_transacciones_general['Transacciones'].iloc[-2]
 
-
-df_operaciones_general = client.query(operaciones_gen).to_dataframe()
+df_operaciones_general = fetch_data(operaciones_gen)
 df_operaciones_general = df_operaciones_general.iloc[0:6]
 op_last_month = df_operaciones_general['Operaciones'].iloc[-2]
 op_actual = df_operaciones_general['Operaciones'].iloc[-1]
 
-
-
+# Cache the ARIMA model
+@st.cache_resource
+def fit_arima_model(data):
+    model = ARIMA(data, order=(1, 1, 1))
+    return model.fit()
 
 # PROYECCION OPERACIONES
-model = ARIMA(df_operaciones_general['Operaciones'].iloc[0:-1], order=(1, 1, 1))  # Ajustar el orden del modelo según sea necesario
-model_fit = model.fit()
+model_fit = fit_arima_model(df_operaciones_general['Operaciones'].iloc[0:-1])
 forecast = model_fit.forecast(steps=1)
 
 prediccion = forecast.iloc[0].astype('int64')
@@ -114,11 +119,10 @@ pred_ope.update_layout(
 )
 
 # PROYECCIÓN TRANSACCIONES
-model_tran = ARIMA(df_transacciones_general['Transacciones'].iloc[0:4], order=(1, 1, 1))
-model_fit = model_tran.fit()
-forecast = model_fit.forecast(steps=1)
+model_fit_tran = fit_arima_model(df_transacciones_general['Transacciones'].iloc[0:4])
+forecast_tran = model_fit_tran.forecast(steps=1)
 
-prediccion = forecast.iloc[0].astype('int64')
+prediccion_tran = forecast_tran.iloc[0].astype('int64')
 
 tran_pred = go.Figure()
 
@@ -128,10 +132,10 @@ tran_pred.add_trace(go.Bar(
     name='Transacciones'
 ))
 
-ultimo_valor = prediccion
+ultimo_valor_tran = prediccion_tran
 tran_pred.add_trace(go.Bar(
     x=[df_transacciones_general.iloc[-1]['month']],
-    y=[ultimo_valor],
+    y=[ultimo_valor_tran],
     marker=dict(color='#F24405'),
     name='Proyección'
 ))
@@ -142,6 +146,5 @@ tran_pred.update_layout(
     yaxis_title='Transacciones'
 )
 
-
-st.plotly_chart(pred_ope)
-st.plotly_chart(tran_pred)
+st.plotly_chart(pred_ope, use_container_width=True)
+st.plotly_chart(tran_pred, use_container_width=True)
