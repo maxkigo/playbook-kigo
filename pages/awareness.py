@@ -306,6 +306,7 @@ fig_dau_barras = px.bar(df_dau_merged, x='dia', y='DAU', color='servicio', title
                         category_orders={"servicio": ["ED", "PV", "CA"]},
                         hover_data={"porcentaje": True},
                         text='porcentaje',
+                        color_discrete_sequence=colores_oficiales
                         )
 fig_dau_barras.update_traces(texttemplate='%{text:.2f}%', textposition='outside')
 fig_dau_barras.add_layout_image(
