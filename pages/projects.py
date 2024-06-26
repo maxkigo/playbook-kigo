@@ -237,7 +237,7 @@ def create_stacked_bar_chart(df):
 
     # Actualizar diseño del gráfico
     fig.update_layout(title='Porcentaje de Tipos de Lecturas Semanal',
-                      xaxis_title='Semana',
+                      xaxis_title='Semana del Año',
                       yaxis_title='Porcentaje (%)',
                       barmode='stack')
 
