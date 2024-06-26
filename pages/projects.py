@@ -5,7 +5,6 @@ import plotly.graph_objects as go
 from google.cloud import bigquery
 from datetime import datetime, timedelta
 import plotly.express as px
-from statsmodels.tsa.arima.model import ARIMA
 from google.oauth2 import service_account
 
 
@@ -34,8 +33,10 @@ credentials = service_account.Credentials.from_service_account_info(
 )
 client = bigquery.Client(credentials=credentials)
 
-proyectos = """
-WITH proyectos_activiti AS (
+@st.cache_data(ttl=3600)
+def proyects_activos():
+    proyectos = """
+    WITH proyectos_activiti AS (
     SELECT 
         EXTRACT(MONTH FROM TIMESTAMP_ADD(TED.paymentDate, INTERVAL -6 HOUR)) AS month, 
         (COUNT(TED.transactionId) * 2) AS operaciones, 
@@ -99,7 +100,7 @@ filtered_proyectos AS (
     GROUP BY 
         month, proyecto
     HAVING 
-        total_operaciones > 50
+        total_operaciones > 100
 )
 
 SELECT 
@@ -124,13 +125,10 @@ ORDER BY
     proyecto
 """
 
-proyectos_activos_pivot = client.query(proyectos).to_dataframe()
+    proyectos_activos_pivot = client.query(proyectos).to_dataframe()
+    return proyectos_activos_pivot
 
-import pandas as pd
-import plotly.express as px
-import streamlit as st
-
-@st.cache_data
+@st.cache_data(ttl=3600)
 def proyectos_errores():
     count_error = """
         SELECT EXTRACT(YEAR FROM TIMESTAMP_ADD(date, INTERVAL -6 HOUR)) AS year,
@@ -142,7 +140,9 @@ def proyectos_errores():
             SELECT date, function_ FROM parkimovil-app.geosek_raspis.log_sek
         ) AS all_logs
         WHERE TRIM(function_) LIKE '%error%'
-            AND EXTRACT(DATE FROM date) >= '2024-01-01'
+            AND EXTRACT(DATE FROM TIMESTAMP_ADD(date, INTERVAL -6 HOUR)) >= '2024-01-01' 
+            AND EXTRACT(WEEK FROM TIMESTAMP_ADD(date, INTERVAL -6 HOUR)) 
+            <= EXTRACT(WEEK FROM CURRENT_DATE("America/Mexico_City"))
         GROUP BY year, week
         ORDER BY year, week;
     """
@@ -150,6 +150,7 @@ def proyectos_errores():
     return df_proyectos_errores
 
 df_errores = proyectos_errores()
+proyectos_activos_pivot = proyects_activos()
 
 fig_errores = px.bar(df_errores, x='week', y='errores', title='Errores Semanales',
                       labels={'week': 'Semana', 'errores': 'Errores'})

@@ -38,40 +38,46 @@ client = bigquery.Client(credentials=credentials)
 # Consulta para usuarios multiservicio
 usuarios_multiservicio = """
 WITH usuariosTableED AS (
-    SELECT S.phoneNumber AS user_id, T.transactionId AS Operacion, EXTRACT(MONTH FROM TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR)) AS mes
+    SELECT S.phoneNumber AS user_id, T.transactionId AS Operacion, 
+    EXTRACT(MONTH FROM TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR)) AS month, 
+    EXTRACT(YEAR FROM TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR)) AS year
     FROM parkimovil-app.cargomovil_pd.PKM_SMART_QR_TRANSACTIONS T
     JOIN parkimovil-app.cargomovil_pd.SEC_USER_PROFILE S
         ON T.userId = S.userId
     WHERE TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00'
 ),
 usuariosTablePV AS (
-    SELECT S.phoneNumber AS user_id, T.transactionId AS Operacion, EXTRACT(MONTH FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS mes
+    SELECT S.phoneNumber AS user_id, T.transactionId AS Operacion, 
+    EXTRACT(MONTH FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS month,
+    EXTRACT(YEAR FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS year
     FROM parkimovil-app.cargomovil_pd.PKM_TRANSACTION T
     JOIN parkimovil-app.cargomovil_pd.SEC_USER_PROFILE S
         ON T.userId = S.userId
     WHERE TIMESTAMP_ADD(date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00'
 ),
 usuariosTableCA AS (
-    SELECT user AS user_id, idlog AS operacion, EXTRACT(MONTH FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS mes
+    SELECT user AS user_id, idlog AS operacion, 
+    EXTRACT(MONTH FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS month,
+    EXTRACT(YEAR FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS year
     FROM parkimovil-app.geosek_raspis.log_sek
     WHERE idlog IS NOT NULL AND function_ = 'open' AND TIMESTAMP_ADD(date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00'
 )
 
-SELECT mes, COUNT(*) as users_multi
+SELECT year, month, COUNT(*) as users_multi
 FROM (
-    SELECT user_id, mes, COUNT(*) as appearances
+    SELECT user_id, year, month, COUNT(*) as appearances
     FROM (
-        SELECT distinct user_id, mes FROM usuariosTableED
+        SELECT distinct user_id, month, year FROM usuariosTableED
         UNION ALL
-        SELECT distinct user_id, mes FROM usuariosTablePV
+        SELECT distinct user_id, month, year FROM usuariosTablePV
         UNION ALL
-        SELECT distinct user_id, mes FROM usuariosTableCA
+        SELECT distinct user_id, month, year FROM usuariosTableCA
     ) all_users
-    GROUP BY user_id, mes
+    GROUP BY user_id, month, year
 ) multiple_appearances
 WHERE appearances > 1
-GROUP BY mes
-ORDER BY mes;       
+GROUP BY year, month
+ORDER BY year, month;       
 """
 
 df_multiservicio_gen = client.query(usuarios_multiservicio).to_dataframe()
@@ -79,7 +85,9 @@ df_multiservicio_gen = client.query(usuarios_multiservicio).to_dataframe()
 # Consulta para usuarios multiproyecto
 multi_proyecto = """
 WITH combined AS (
-    SELECT CAT.parkingLotName AS proyecto, S.phoneNumber AS user_id, EXTRACT(YEAR FROM TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR)) AS year, EXTRACT(MONTH FROM TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR)) AS month
+    SELECT CAT.parkingLotName AS proyecto, S.phoneNumber AS user_id, 
+    EXTRACT(YEAR FROM TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR)) AS year, 
+    EXTRACT(MONTH FROM TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR)) AS month
     FROM parkimovil-app.cargomovil_pd.PKM_SMART_QR_TRANSACTIONS T
     JOIN parkimovil-app.cargomovil_pd.SEC_USER_PROFILE S
         ON T.userId = S.userId
@@ -87,7 +95,9 @@ WITH combined AS (
         ON T.parkingLotId = CAT.id
     WHERE TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00'
     UNION ALL
-    SELECT ZCA.name AS proyecto, S.phoneNumber AS user_id, EXTRACT(YEAR FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS year, EXTRACT(MONTH FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS month
+    SELECT ZCA.name AS proyecto, S.phoneNumber AS user_id, 
+    EXTRACT(YEAR FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS year,
+    EXTRACT(MONTH FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS month
     FROM parkimovil-app.cargomovil_pd.PKM_TRANSACTION T
     JOIN parkimovil-app.cargomovil_pd.SEC_USER_PROFILE S
         ON T.userId = S.userId
@@ -95,7 +105,9 @@ WITH combined AS (
         ON T.zoneId = ZCA.id
     WHERE TIMESTAMP_ADD(date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00'
     UNION ALL
-    SELECT R.alias AS proyecto, user AS user_id, EXTRACT(YEAR FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS year, EXTRACT(MONTH FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS month
+    SELECT R.alias AS proyecto, user AS user_id, 
+    EXTRACT(YEAR FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS year,
+    EXTRACT(MONTH FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS month
     FROM parkimovil-app.geosek_raspis.log_sek L
     JOIN `parkimovil-app`.geosek_raspis.raspis R
         ON L.QR = R.qr
@@ -117,14 +129,22 @@ df_multiproyecto_gen = client.query(multi_proyecto).to_dataframe()
 
 # Gráfico de usuarios multiservicio
 fig_multiservicio = go.Figure()
-
+df_multiservicio_gen['mes'] = df_multiservicio_gen.apply(lambda row: f"{row['year']}-{row['month']:02d}", axis=1)
 fig_multiservicio.add_trace(go.Bar(
     x=df_multiservicio_gen['mes'],
     y=df_multiservicio_gen['users_multi'],
     name='Usuarios Multiservicio',
     marker_color='#EEA31B'
 ))
-
+fig_multiservicio.add_layout_image(
+        dict(
+            source="https://www.kigo.pro/recursos-kigo/img-kigo/kigo-logo.png",
+            xref="paper", yref="paper",
+            x=1, y=1.05,
+            sizex=0.2, sizey=0.2,
+            xanchor="right", yanchor="bottom"
+        )
+    )
 fig_multiservicio.update_layout(
     title='Usuarios Multiservicio por Mes',
     xaxis_title='Mes',
@@ -134,16 +154,22 @@ fig_multiservicio.update_layout(
 
 # Gráfico de usuarios multiproyecto
 fig_multiproyecto = go.Figure()
-
 df_multiproyecto_gen['mes'] = df_multiproyecto_gen.apply(lambda row: f"{row['year']}-{row['month']:02d}", axis=1)
-
 fig_multiproyecto.add_trace(go.Bar(
     x=df_multiproyecto_gen['mes'],
     y=df_multiproyecto_gen['usuarios_multiservicio_por_mes'],
     name='Usuarios Multiproyecto',
     marker_color='#4F70B7'
 ))
-
+fig_multiproyecto.add_layout_image(
+        dict(
+            source="https://www.kigo.pro/recursos-kigo/img-kigo/kigo-logo.png",
+            xref="paper", yref="paper",
+            x=1, y=1.05,
+            sizex=0.2, sizey=0.2,
+            xanchor="right", yanchor="bottom"
+        )
+    )
 fig_multiproyecto.update_layout(
     title='Usuarios Multiproyecto por Mes',
     xaxis_title='Mes',
@@ -494,7 +520,15 @@ fig_funnel_multiservicio = go.Figure(go.Funnel(
     marker = {"color": ["#030140", "#F24405", "#4F70B7", "#F88201", "#EEA31B"]},
     textinfo = "value+percent initial"
 ))
-
+fig_funnel_multiservicio.add_layout_image(
+        dict(
+            source="https://www.kigo.pro/recursos-kigo/img-kigo/kigo-logo.png",
+            xref="paper", yref="paper",
+            x=1, y=1.05,
+            sizex=0.2, sizey=0.2,
+            xanchor="right", yanchor="bottom"
+        )
+    )
 fig_funnel_multiservicio.update_layout(
     title='Funnel de Usuarios Multiservicio',
     yaxis_title='Número de Servicios',
@@ -512,7 +546,15 @@ fig_funnel_multiproyecto = go.Figure(go.Funnel(
     "#B4DBE2", "#4DD0E1", "#F0F8FF", "#E6EEFA", "#FFF9C4"]},
     textinfo = "value+percent initial"
 ))
-
+fig_funnel_multiproyecto.add_layout_image(
+        dict(
+            source="https://www.kigo.pro/recursos-kigo/img-kigo/kigo-logo.png",
+            xref="paper", yref="paper",
+            x=1, y=1.05,
+            sizex=0.2, sizey=0.2,
+            xanchor="right", yanchor="bottom"
+        )
+    )
 fig_funnel_multiproyecto.update_layout(
     title='Funnel de Usuarios Multiproyecto',
     yaxis_title='Número de Proyectos',
@@ -550,6 +592,15 @@ fig_churn_serv.update_layout(
     yaxis_title='Usuarios',
     xaxis_title='Mes'
 )
+fig_churn_serv.add_layout_image(
+        dict(
+            source="https://www.kigo.pro/recursos-kigo/img-kigo/kigo-logo.png",
+            xref="paper", yref="paper",
+            x=1, y=1.05,
+            sizex=0.2, sizey=0.2,
+            xanchor="right", yanchor="bottom"
+        )
+    )
 
 df_multiproyecto_user_nuevos = df_multiproyecto_user_nuevos[df_multiproyecto_user_nuevos['mes'] != 1]
 
@@ -571,6 +622,15 @@ fig_churn_proy.update_layout(
     yaxis_title='Usuarios',
     xaxis_title='Mes'
 )
+fig_churn_proy.add_layout_image(
+        dict(
+            source="https://www.kigo.pro/recursos-kigo/img-kigo/kigo-logo.png",
+            xref="paper", yref="paper",
+            x=1, y=1.05,
+            sizex=0.2, sizey=0.2,
+            xanchor="right", yanchor="bottom"
+        )
+    )
 
 col1, col2, col3, col4 = st.columns(4)
 with col1:
