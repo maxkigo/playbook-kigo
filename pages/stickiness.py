@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 from google.cloud import bigquery
 from google.oauth2 import service_account
+from datetime import datetime, timedelta
 
 # Configuración de página
 st.set_page_config(
@@ -33,7 +34,7 @@ credentials = service_account.Credentials.from_service_account_info(
 client = bigquery.Client(credentials=credentials)
 
 # Función para consultar datos y cachearlos
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=3600)
 def fetch_data(query):
     return client.query(query).to_dataframe()
 
@@ -127,7 +128,8 @@ WITH CombinedTable AS (
            EXTRACT(MONTH FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS mes,
            'PV' AS tipo_servicio
     FROM parkimovil-app.cargomovil_pd.PKM_TRANSACTION 
-    WHERE id IS NOT NULL AND TIMESTAMP_ADD(date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00' AND (paymentType = 3 OR paymentType = 4)
+    WHERE id IS NOT NULL AND TIMESTAMP_ADD(date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00' AND (paymentType = 3 OR 
+    paymentType = 4)
     UNION ALL
     SELECT EXTRACT(WEEK FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS semana,
            EXTRACT(MONTH FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS mes,
@@ -161,6 +163,78 @@ def create_stacked_bar_chart(df, tipo_servicio, periodo):
                  )
     return fig
 
+@st.cache_data(ttl=3600)
+def get_operations_services():
+    query = """
+    WITH CombinedTable AS (
+    SELECT EXTRACT(DATE FROM TIMESTAMP_ADD(checkinDate, INTERVAL - 6 HOUR)) AS fecha, 'ED' AS tipo_servicio
+    FROM parkimovil-app.cargomovil_pd.PKM_SMART_QR_CHECKIN
+    WHERE id IS NOT NULL AND TIMESTAMP_ADD(checkinDate, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00' AND qrCode LIKE 'E%'
+    UNION ALL
+    SELECT EXTRACT(DATE FROM TIMESTAMP_ADD(checkOutDate, INTERVAL - 6 HOUR)) AS fecha, 'ED' AS tipo_servicio
+    FROM parkimovil-app.cargomovil_pd.PKM_SMART_QR_CHECKOUT
+    WHERE  id IS NOT NULL AND TIMESTAMP_ADD(checkOutDate, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00' 
+    AND qrCode LIKE 'E%'
+    UNION ALL
+    SELECT EXTRACT(DATE FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS fecha, 'PV' AS tipo_servicio
+    FROM parkimovil-app.cargomovil_pd.PKM_TRANSACTION 
+    WHERE id IS NOT NULL AND TIMESTAMP_ADD(date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00' 
+    AND (paymentType = 3 OR paymentType = 4)
+    UNION ALL
+    SELECT EXTRACT(DATE FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS fecha, 'CA' AS tipo_servicio
+    FROM parkimovil-app.geosek_raspis.log_sek
+    WHERE idlog IS NOT NULL AND function_ = 'open' AND TIMESTAMP_ADD(date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00'
+    )
+    
+    SELECT
+        EXTRACT(YEAR FROM CT.fecha) AS Year,
+        EXTRACT(MONTH FROM CT.fecha) AS Month,
+        CT.tipo_servicio AS Service,
+        COUNT(*) AS Operaciones
+    FROM
+        CombinedTable CT
+    WHERE EXTRACT(MONTH FROM CT.fecha) <= EXTRACT(MONTH FROM CURRENT_TIMESTAMP)
+    GROUP BY
+        Year, Month, CT.tipo_servicio
+    """
+
+    query_job = client.query(query)
+    results = query_job.result()
+
+    return results.to_dataframe()
+
+
+@st.cache_data(ttl=3600)
+def get_transaction_services():
+    query = """
+    WITH CombinedTable AS (
+    SELECT EXTRACT(DATE FROM TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR)) AS fecha, 'ED' AS tipo_servicio
+    FROM parkimovil-app.cargomovil_pd.PKM_SMART_QR_TRANSACTIONS 
+    WHERE id IS NOT NULL AND TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00' AND qrCode LIKE 'E%'
+    UNION ALL
+    SELECT EXTRACT(DATE FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS fecha, 'PV' AS tipo_servicio
+    FROM parkimovil-app.cargomovil_pd.PKM_TRANSACTION 
+    WHERE id IS NOT NULL AND TIMESTAMP_ADD(date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00' 
+    AND (paymentType = 3 OR paymentType = 4)
+    )
+
+    SELECT
+        EXTRACT(YEAR FROM CT.fecha) AS Year,
+        EXTRACT(MONTH FROM CT.fecha) AS Month,
+        CT.tipo_servicio AS Service,
+        COUNT(*) AS Transacciones
+    FROM
+        CombinedTable CT
+    WHERE EXTRACT(MONTH FROM CT.fecha) <= EXTRACT(MONTH FROM CURRENT_TIMESTAMP)
+    GROUP BY
+        Year, Month, CT.tipo_servicio
+    """
+
+    query_job = client.query(query)
+    results = query_job.result()
+
+    return results.to_dataframe()
+
 # Crear gráfico interactivo para transacciones generales
 st.subheader('Transacciones Generales')
 
@@ -169,9 +243,29 @@ tipo_transacciones = st.radio('Selecciona el tipo de visualización para Transac
                                   options=['Mensual', 'Semanal'])
 
 if tipo_transacciones == 'Mensual':
-    fig_transacciones = create_stacked_bar_chart(df_transacciones_general_mensual, 'Transacciones', 'mes')
+    fig_transacciones = create_stacked_bar_chart(df_transacciones_general_mensual, 'Transacciones',
+                                                 'mes')
+    fig_transacciones.add_layout_image(
+        dict(
+            source="https://www.kigo.pro/recursos-kigo/img-kigo/kigo-logo.png",
+            xref="paper", yref="paper",
+            x=1, y=1.05,
+            sizex=0.2, sizey=0.2,
+            xanchor="right", yanchor="bottom"
+        )
+    )
 else:
-    fig_transacciones = create_stacked_bar_chart(df_transacciones_general_semanal, 'Transacciones', 'semana')
+    fig_transacciones = create_stacked_bar_chart(df_transacciones_general_semanal, 'Transacciones',
+                                                 'semana')
+    fig_transacciones.add_layout_image(
+        dict(
+            source="https://www.kigo.pro/recursos-kigo/img-kigo/kigo-logo.png",
+            xref="paper", yref="paper",
+            x=1, y=1.05,
+            sizex=0.2, sizey=0.2,
+            xanchor="right", yanchor="bottom"
+        )
+    )
 
 st.plotly_chart(fig_transacciones, use_container_width=True)
 
@@ -184,9 +278,69 @@ tipo_operaciones = st.radio('Selecciona el tipo de visualización para Operacion
 
 if tipo_operaciones == 'Mensual':
     fig_operaciones = create_stacked_bar_chart(df_operaciones_general_mensual, 'Operaciones', 'mes')
+    fig_operaciones.add_layout_image(
+        dict(
+            source="https://www.kigo.pro/recursos-kigo/img-kigo/kigo-logo.png",
+            xref="paper", yref="paper",
+            x=1, y=1.05,
+            sizex=0.2, sizey=0.2,
+            xanchor="right", yanchor="bottom"
+        )
+    )
 else:
     fig_operaciones = create_stacked_bar_chart(df_operaciones_general_semanal, 'Operaciones', 'semana')
+    fig_operaciones.add_layout_image(
+        dict(
+            source="https://www.kigo.pro/recursos-kigo/img-kigo/kigo-logo.png",
+            xref="paper", yref="paper",
+            x=1, y=1.05,
+            sizex=0.2, sizey=0.2,
+            xanchor="right", yanchor="bottom"
+        )
+    )
 
 st.plotly_chart(fig_operaciones, use_container_width=True)
 
 
+# Función para crear el gráfico circular
+def create_pie_chart(df):
+    current_year = datetime.now().year
+    oper_by_service = df.groupby('Service')['Operaciones'].sum().reset_index()
+    fig = px.pie(oper_by_service, names='Service', values='Operaciones',
+                 title=f'Porcentaje de Operaciones por Servicio - ({current_year})')
+    fig.add_layout_image(
+        dict(
+            source="https://www.kigo.pro/recursos-kigo/img-kigo/kigo-logo.png",
+            xref="paper", yref="paper",
+            x=1, y=1.05,
+            sizex=0.2, sizey=0.2,
+            xanchor="right", yanchor="bottom"
+        )
+    )
+    return fig
+
+
+def create_pie_chart_tran(df):
+    current_year = datetime.now().year
+    oper_by_service = df.groupby('Service')['Transacciones'].sum().reset_index()
+    fig = px.pie(oper_by_service, names='Service', values='Transacciones',
+                 title=f'Porcentaje de Transacciones por Servicio - ({current_year})')
+    fig.add_layout_image(
+        dict(
+            source="https://www.kigo.pro/recursos-kigo/img-kigo/kigo-logo.png",
+            xref="paper", yref="paper",
+            x=1, y=1.05,
+            sizex=0.2, sizey=0.2,
+            xanchor="right", yanchor="bottom"
+        )
+    )
+    return fig
+
+
+df_oper_serv = get_operations_services()
+df_tran_serv = get_transaction_services()
+
+pie_operaciones = create_pie_chart(df_oper_serv)
+pie_transacciones = create_pie_chart_tran(df_tran_serv)
+st.plotly_chart(pie_operaciones, use_container_width=True)
+st.plotly_chart(pie_transacciones, use_container_width=True)

@@ -54,23 +54,45 @@ mau_actual = df_mau_general['MAU'].iloc[-2]
 
 
 gmv_general = """
-WITH CombinetTable AS (
-SELECT DISTINCT(transactionId), total AS monto,
-EXTRACT(DATE FROM TIMESTAMP_ADD(paymentDate, INTERVAL -6 HOUR)) AS fecha,
-FROM parkimovil-app.cargomovil_pd.PKM_SMART_QR_TRANSACTIONS T
-WHERE TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00' AND T.qrCode LIKE 'E%' AND T.paymentType IN (3, 4) --No se toma en cuenta ATM
-UNION ALL
-SELECT DISTINCT(transactionId), totalAmount AS monto,
-EXTRACT(DATE FROM TIMESTAMP_ADD(date, INTERVAL -6 HOUR)) AS fecha
-FROM parkimovil-app.cargomovil_pd.PKM_TRANSACTION PV
-WHERE TIMESTAMP_ADD(date, INTERVAL -6 HOUR) >= '2024-01-01 00:00:00' AND PV.paymentType IN (1, 2, 3, 4)
+    WITH CombinetTable AS (
+    SELECT DISTINCT(transactionId) AS transactionId, total AS monto,
+           EXTRACT(DATE FROM TIMESTAMP_ADD(paymentDate, INTERVAL -6 HOUR)) AS fecha
+    FROM parkimovil-app.cargomovil_pd.PKM_SMART_QR_TRANSACTIONS T
+    WHERE TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00' AND T.qrCode LIKE 'E%'
+    UNION ALL
+    SELECT DISTINCT(transactionId) AS transactionId, totalAmount AS monto,
+           EXTRACT(DATE FROM TIMESTAMP_ADD(date, INTERVAL -6 HOUR)) AS fecha
+    FROM parkimovil-app.cargomovil_pd.PKM_TRANSACTION PV
+    WHERE TIMESTAMP_ADD(date, INTERVAL -6 HOUR) >= '2024-01-01 00:00:00'
+),
+PensionesData AS (
+    SELECT
+        EXTRACT(YEAR FROM TIMESTAMP_ADD(CAST(PLLP.charge_date AS TIMESTAMP), INTERVAL -6 HOUR)) AS Pension_Year,
+        EXTRACT(MONTH FROM TIMESTAMP_ADD(CAST(PLLP.charge_date AS TIMESTAMP), INTERVAL -6 HOUR)) AS Pension_Month,
+        SUM(IFNULL(TRN.amount, 0)) AS PENSIONES_CARD
+    FROM
+        parkimovil-app.cargomovil_pd.PKM_PARKING_LOT_LODGING_PAYMENTS PLLP
+    JOIN parkimovil-app.cargomovil_pd.CDX_TRANSACTION TRN
+        ON PLLP.transaction_id = TRN.id
+    WHERE payment_method = 'card'
+    GROUP BY Pension_Year, Pension_Month
 )
 
-SELECT EXTRACT(MONTH FROM fecha) AS mes, SUM(monto) AS GMV
-FROM CombinetTable
-GROUP BY EXTRACT(MONTH FROM fecha)
-ORDER BY mes
+SELECT
+    EXTRACT(YEAR FROM CT.fecha) AS Year,
+    EXTRACT(MONTH FROM CT.fecha) AS mes,
+    SUM(CT.monto) + IFNULL(PD.PENSIONES_CARD, 0) AS GMV
+FROM
+    CombinetTable CT
+LEFT JOIN
+    PensionesData PD ON EXTRACT(YEAR FROM CT.fecha) = PD.Pension_Year
+                    AND EXTRACT(MONTH FROM CT.fecha) = PD.Pension_Month
+GROUP BY
+    Year, mes, PD.PENSIONES_CARD
+ORDER BY
+    Year, mes
 """
+
 df_gmv_general = client.query(gmv_general).to_dataframe()
 gmv_last_month = df_gmv_general['GMV'].iloc[-3]
 gmv_actual = df_gmv_general['GMV'].iloc[-2]
@@ -81,11 +103,13 @@ transacciones_gen = """
 WITH CombinetTable AS (
     SELECT T.transactionId AS transacciones, EXTRACT(MONTH FROM TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR)) AS month
     FROM parkimovil-app.cargomovil_pd.PKM_SMART_QR_TRANSACTIONS T
-    WHERE TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00' AND T.total != 0 AND T.total IS NOT NULL AND T.qrCode LIKE 'E%'
+    WHERE TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00' AND T.total != 0 
+    AND T.total IS NOT NULL AND T.qrCode LIKE 'E%'
     UNION ALL
     SELECT PVT.id AS transacciones, EXTRACT(MONTH FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS month
     FROM parkimovil-app.cargomovil_pd.PKM_TRANSACTION PVT
-    WHERE TIMESTAMP_ADD(date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00' AND (PVT.paymentType = 3 OR PVT.paymentType = 4) AND PVT.amount != 0 AND PVT.amount IS NOT NULL
+    WHERE TIMESTAMP_ADD(date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00' AND (PVT.paymentType = 3 OR PVT.paymentType = 4) 
+    AND PVT.amount != 0 AND PVT.amount IS NOT NULL
     )
     
     SELECT month, COUNT(DISTINCT transacciones) AS Transacciones
