@@ -307,7 +307,8 @@ def create_pie_chart(df):
     current_year = datetime.now().year
     oper_by_service = df.groupby('Service')['Operaciones'].sum().reset_index()
     fig = px.pie(oper_by_service, names='Service', values='Operaciones',
-                 title=f'Porcentaje de Operaciones por Servicio - ({current_year})')
+                 title=f'Porcentaje de Operaciones por Servicio - ({current_year})',
+                 color_discrete_sequence=colores_oficiales)
     fig.add_layout_image(
         dict(
             source="https://www.kigo.pro/recursos-kigo/img-kigo/kigo-logo.png",
@@ -324,7 +325,8 @@ def create_pie_chart_tran(df):
     current_year = datetime.now().year
     oper_by_service = df.groupby('Service')['Transacciones'].sum().reset_index()
     fig = px.pie(oper_by_service, names='Service', values='Transacciones',
-                 title=f'Porcentaje de Transacciones por Servicio - ({current_year})')
+                 title=f'Porcentaje de Transacciones por Servicio - ({current_year})',
+                 color_discrete_sequence=['#4F70B7', '#030140'])
     fig.add_layout_image(
         dict(
             source="https://www.kigo.pro/recursos-kigo/img-kigo/kigo-logo.png",
