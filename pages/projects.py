@@ -131,30 +131,120 @@ ORDER BY
 @st.cache_data(ttl=3600)
 def proyectos_errores():
     count_error = """
-        SELECT EXTRACT(YEAR FROM TIMESTAMP_ADD(date, INTERVAL -6 HOUR)) AS year,
-               EXTRACT(WEEK FROM TIMESTAMP_ADD(date, INTERVAL -6 HOUR)) AS week,
-               COUNT(function_) AS errores
+        SELECT EXTRACT(YEAR FROM date) AS year,
+               EXTRACT(WEEK FROM date) AS week,
+               SUM(CASE WHEN function_ LIKE 'open%error%500' OR function_
+               IN ('open_error_', 'open_error') THEN 1 END) AS errores_desconexion,
+               SUM(CASE WHEN function_ LIKE '%501%' THEN 1 END) AS errores_presencia
         FROM (
-            SELECT date, function_ FROM parkimovil-app.geosek_raspis.log
+            SELECT date, function_ FROM parkimovil-app.geosek_raspis.log L
+            JOIN `parkimovil-app`.geosek_raspis.raspis R
+            ON L.QR = R.qr
             UNION ALL
-            SELECT date, function_ FROM parkimovil-app.geosek_raspis.log_sek
+            SELECT date, function_ FROM parkimovil-app.geosek_raspis.log_sek LS
+            JOIN `parkimovil-app`.geosek_raspis.raspis R
+            ON LS.QR = R.qr
         ) AS all_logs
-        WHERE TRIM(function_) LIKE '%error%'
-            AND EXTRACT(DATE FROM TIMESTAMP_ADD(date, INTERVAL -6 HOUR)) >= '2024-01-01' 
-            AND EXTRACT(WEEK FROM TIMESTAMP_ADD(date, INTERVAL -6 HOUR)) 
+            WHERE EXTRACT(YEAR FROM date) >= 2024
+            AND EXTRACT(WEEK FROM date)
             <= EXTRACT(WEEK FROM CURRENT_DATE("America/Mexico_City"))
         GROUP BY year, week
-        ORDER BY year, week;
+        ORDER BY year, week
     """
     df_proyectos_errores = client.query(count_error).to_dataframe()
     return df_proyectos_errores
 
+
+@st.cache_data(ttl=3600)
+def proyectos_lecturas():
+    query = """
+    SELECT EXTRACT(YEAR FROM date) AS year,
+               EXTRACT(WEEK FROM date) AS week,
+               SUM(CASE WHEN function_ IN ('open', 'open_rf', 'open_qr') THEN 1 END) AS lecturas_exitosas,
+               SUM(CASE WHEN function_ LIKE 'open%error%500' OR function_ IN ('open_error_', 'open_error') THEN 1 END) AS errores_desconexion,
+               SUM(CASE WHEN function_ LIKE '%501%' THEN 1 END) AS errores_presencia,
+               SUM(CASE WHEN function_ LIKE 'denied%' THEN 1 END) AS accesos_denegados
+        FROM (
+            SELECT date, function_ FROM parkimovil-app.geosek_raspis.log L
+            JOIN `parkimovil-app`.geosek_raspis.raspis R
+            ON L.QR = R.qr
+            UNION ALL
+            SELECT date, function_ FROM parkimovil-app.geosek_raspis.log_sek LS
+            JOIN `parkimovil-app`.geosek_raspis.raspis R
+            ON LS.QR = R.qr
+        ) AS all_logs
+        WHERE EXTRACT(YEAR FROM date) >= 2024
+        GROUP BY year, week
+        ORDER BY year, week
+    """
+
+    df_lecturas = client.query(query).to_dataframe()
+    return df_lecturas
+
+
 df_errores = proyectos_errores()
 proyectos_activos_pivot = proyects_activos()
+df_lecturas = proyectos_lecturas()
 
-fig_errores = px.bar(df_errores, x='week', y='errores', title='Errores Semanales',
-                      labels={'week': 'Semana', 'errores': 'Errores'})
+# Crear figura de Plotly
+fig_errores = go.Figure()
+
+# Agregar barras para errores de desconexión
+fig_errores.add_trace(go.Bar(x=df_errores['week'], y=df_errores['errores_desconexion'],
+                     name='Errores de Desconexión'))
+
+# Agregar barras para errores de presencia
+fig_errores.add_trace(go.Bar(x=df_errores['week'], y=df_errores['errores_presencia'],
+                     name='Errores de Presencia'))
+
+# Actualizar el diseño del gráfico
+fig_errores.update_layout(title='Errores Semanales',
+                  xaxis_title='Semana',
+                  yaxis_title='Cantidad de Errores',
+                  barmode='group')
+
+@st.cache_data(ttl=3600)
+def create_stacked_bar_chart(df):
+    # Calcular los totales por semana
+    df['total'] = df[['lecturas_exitosas', 'errores_desconexion', 'errores_presencia', 'accesos_denegados']].sum(axis=1)
+
+    # Calcular los porcentajes
+    df['lecturas_exitosas_pct'] = df['lecturas_exitosas'] / df['total'] * 100
+    df['errores_desconexion_pct'] = df['errores_desconexion'] / df['total'] * 100
+    df['errores_presencia_pct'] = df['errores_presencia'] / df['total'] * 100
+    df['accesos_denegados_pct'] = df['accesos_denegados'] / df['total'] * 100
+
+    # Preparar los datos para Plotly
+    fig = go.Figure()
+
+    # Agregar las barras apiladas y los porcentajes dentro de las barras con valores reales en hover
+    fig.add_trace(go.Bar(x=df['week'], y=df['lecturas_exitosas_pct'], name='Lecturas Exitosas',
+                         text=df['lecturas_exitosas_pct'].round(2).astype(str) + '%',
+                         hovertext=df['lecturas_exitosas'].astype(str),
+                         textposition='inside'))
+    fig.add_trace(go.Bar(x=df['week'], y=df['errores_desconexion_pct'], name='Errores Desconexión',
+                         text=df['errores_desconexion_pct'].round(2).astype(str) + '%',
+                         hovertext=df['errores_desconexion'].astype(str),
+                         textposition='inside'))
+    fig.add_trace(go.Bar(x=df['week'], y=df['errores_presencia_pct'], name='Errores Presencia',
+                         text=df['errores_presencia_pct'].round(2).astype(str) + '%',
+                         hovertext=df['errores_presencia'].astype(str),
+                         textposition='inside'))
+    fig.add_trace(go.Bar(x=df['week'], y=df['accesos_denegados_pct'], name='Accesos Denegados',
+                         text=df['accesos_denegados_pct'].round(2).astype(str) + '%',
+                         hovertext=df['accesos_denegados'].astype(str),
+                         textposition='inside'))
+
+    # Actualizar diseño del gráfico
+    fig.update_layout(title='Porcentaje de Tipos de Lecturas Semanal',
+                      xaxis_title='Semana',
+                      yaxis_title='Porcentaje (%)',
+                      barmode='stack')
+
+    return fig
+
+
+fig_stacked_bar_chart = create_stacked_bar_chart(df_lecturas)
 
 st.plotly_chart(fig_errores, use_container_width=True)
-
-st.write(proyectos_activos_pivot, use_container_width=True)
+st.plotly_chart(fig_stacked_bar_chart, use_container_width=True)
