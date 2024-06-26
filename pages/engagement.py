@@ -6,6 +6,8 @@ import plotly.express as px
 from google.cloud import bigquery
 from datetime import datetime, timedelta
 from google.oauth2 import service_account
+import calendar
+
 
 # Configuración de la página
 st.set_page_config(
