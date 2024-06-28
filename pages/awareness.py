@@ -138,7 +138,9 @@ queries = {
 }
 
 # Consultas SQL para DAU
-dau_queries =  """
+@st.cache_data(ttl=3600)
+def dau():
+        dau_queries = """
         WITH CombinetTable AS (
         SELECT P.phoneNumber AS user_id, EXTRACT(DATE FROM TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR)) AS dia, 'ED' AS servicio
         FROM parkimovil-app.cargomovil_pd.PKM_SMART_QR_TRANSACTIONS T
@@ -160,8 +162,11 @@ dau_queries =  """
         FROM CombinetTable
         GROUP BY dia, servicio
         ORDER BY dia;
-    """
+        """
+        df_dau = client.query(dau_queries).to_dataframe()
+        return df_dau
 
+df_dau = dau()
 
 # Selección de MAU/WAU
 metrica_seleccionada = st.selectbox('Selecciona una métrica:', ['MAU', 'WAU'])
@@ -270,8 +275,7 @@ fig.update_layout(
 
 st.plotly_chart(fig, use_container_width=True)
 
-# DAU Gráfico de Área con Selección de Servicios
-df_dau = client.query(dau_queries).to_dataframe()
+
 
 # Paleta de colores oficial
 colores_oficiales = ['#EEA31B', '#030140', '#4F70B7']
@@ -326,7 +330,9 @@ with col11:
     st.plotly_chart(fig_dau_barras, use_container_width=True)
 
 # Consultas SQL para DAU de todos los servicios
-dau_query = """
+@st.cache_data(ttl=3600)
+def dau_query():
+    query = """
     WITH CombinetTable AS (
     SELECT P.phoneNumber AS user_id, EXTRACT(DATE FROM TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR)) AS dia
     FROM parkimovil-app.cargomovil_pd.PKM_SMART_QR_TRANSACTIONS T
@@ -348,11 +354,12 @@ dau_query = """
     FROM CombinetTable
     GROUP BY dia
     ORDER BY dia;
-"""
+    """
+    df_dau = client.query(query).to_dataframe()
+    return df_dau
 
-# Obtener los datos de DAU
-df_dau = client.query(dau_query).to_dataframe()
 
+df_dau = dau_query()
 # Calcular el primer y último día del mes pasado
 fecha_actual = datetime.now()
 primer_dia_mes_actual = fecha_actual.replace(day=1)
@@ -380,6 +387,7 @@ if not df_mes_actual.empty:
 else:
     dau_promedio_mes_actual = "No hay suficientes datos"
 
+
 col13, col14, col15 = st.columns(3)
 with col13:
     # Mostrar los indicadores
@@ -387,4 +395,4 @@ with col13:
 with col14:
     st.metric(label="DAU Promedio Mes en Curso", value=dau_promedio_mes_actual)
 with col15:
-    st.metric(label='DAU/MAU Radio', value=(dau_promedio_mes_pasado/319278)*100)
+    st.metric(label='DAU/MAU Radio', value=round((dau_promedio_mes_pasado / 319278) * 100, 2))

@@ -23,7 +23,10 @@ credentials = service_account.Credentials.from_service_account_info(
 )
 client = bigquery.Client(credentials=credentials)
 
-mau_general = """
+
+@st.cache_data(ttl=3600)
+def mau_general():
+    mau_general = """
     WITH CombinetTable AS (
     SELECT P.phoneNumber AS user_id, EXTRACT(MONTH FROM TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR)) AS month
     FROM parkimovil-app.cargomovil_pd.PKM_SMART_QR_TRANSACTIONS T
@@ -48,12 +51,18 @@ mau_general = """
     ORDER BY month;
     """
 
-df_mau_general = client.query(mau_general).to_dataframe()
+    df_mau_general = client.query(mau_general).to_dataframe()
+    return df_mau_general
+
+
+df_mau_general = mau_general()
 mau_last_month = df_mau_general['MAU'].iloc[-3]
 mau_actual = df_mau_general['MAU'].iloc[-2]
 
 
-gmv_general = """
+@st.cache_data(ttl=3600)
+def gmv_general():
+    gmv_general = """
     WITH CombinetTable AS (
     SELECT DISTINCT(transactionId) AS transactionId, total AS monto,
            EXTRACT(DATE FROM TIMESTAMP_ADD(paymentDate, INTERVAL -6 HOUR)) AS fecha
@@ -64,8 +73,8 @@ gmv_general = """
            EXTRACT(DATE FROM TIMESTAMP_ADD(date, INTERVAL -6 HOUR)) AS fecha
     FROM parkimovil-app.cargomovil_pd.PKM_TRANSACTION PV
     WHERE TIMESTAMP_ADD(date, INTERVAL -6 HOUR) >= '2024-01-01 00:00:00'
-),
-PensionesData AS (
+    ),
+    PensionesData AS (
     SELECT
         EXTRACT(YEAR FROM TIMESTAMP_ADD(CAST(PLLP.charge_date AS TIMESTAMP), INTERVAL -6 HOUR)) AS Pension_Year,
         EXTRACT(MONTH FROM TIMESTAMP_ADD(CAST(PLLP.charge_date AS TIMESTAMP), INTERVAL -6 HOUR)) AS Pension_Month,
@@ -76,31 +85,35 @@ PensionesData AS (
         ON PLLP.transaction_id = TRN.id
     WHERE payment_method = 'card'
     GROUP BY Pension_Year, Pension_Month
-)
+    )
 
-SELECT
+    SELECT
     EXTRACT(YEAR FROM CT.fecha) AS Year,
     EXTRACT(MONTH FROM CT.fecha) AS mes,
     SUM(CT.monto) + IFNULL(PD.PENSIONES_CARD, 0) AS GMV
-FROM
+    FROM
     CombinetTable CT
-LEFT JOIN
+    LEFT JOIN
     PensionesData PD ON EXTRACT(YEAR FROM CT.fecha) = PD.Pension_Year
                     AND EXTRACT(MONTH FROM CT.fecha) = PD.Pension_Month
-GROUP BY
+    GROUP BY
     Year, mes, PD.PENSIONES_CARD
-ORDER BY
+    ORDER BY
     Year, mes
-"""
+    """
+    df_gmv_general = client.query(gmv_general).to_dataframe()
+    return df_gmv_general
 
-df_gmv_general = client.query(gmv_general).to_dataframe()
+df_gmv_general = gmv_general()
 gmv_last_month = df_gmv_general['GMV'].iloc[-3]
 gmv_actual = df_gmv_general['GMV'].iloc[-2]
 
 # TRANSACCIONES GENERALES
-transacciones_gen = """
--- APP
-WITH CombinetTable AS (
+@st.cache_data(ttl=3600)
+def transacciones_gen():
+    transacciones_gen = """
+    -- APP
+    WITH CombinetTable AS (
     SELECT T.transactionId AS transacciones, EXTRACT(MONTH FROM TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR)) AS month
     FROM parkimovil-app.cargomovil_pd.PKM_SMART_QR_TRANSACTIONS T
     WHERE TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00' AND T.total != 0 
@@ -108,24 +121,29 @@ WITH CombinetTable AS (
     UNION ALL
     SELECT PVT.id AS transacciones, EXTRACT(MONTH FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS month
     FROM parkimovil-app.cargomovil_pd.PKM_TRANSACTION PVT
-    WHERE TIMESTAMP_ADD(date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00' AND (PVT.paymentType = 3 OR PVT.paymentType = 4) 
+    WHERE TIMESTAMP_ADD(date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00' 
+    AND (PVT.paymentType = 3 OR PVT.paymentType = 4) 
     AND PVT.amount != 0 AND PVT.amount IS NOT NULL
     )
     
     SELECT month, COUNT(DISTINCT transacciones) AS Transacciones
     FROM CombinetTable
     GROUP BY month
-    ORDER BY month;
+    ORDER BY month
+    """
+    df_transacciones_general = client.query(transacciones_gen).to_dataframe()
+    return df_transacciones_general
 
-"""
 
-df_transacciones_general = client.query(transacciones_gen).to_dataframe()
+df_transacciones_general = transacciones_gen()
 trans_last_month = df_transacciones_general['Transacciones'].iloc[-3]
 trans_actural = df_transacciones_general['Transacciones'].iloc[-2]
 
 # OPERACIONES GENERALES
-operaciones_gen = """
-WITH CombinetTable AS (
+@st.cache_data(ttl=3600)
+def operaciones_gen():
+    operaciones_gen = """
+    WITH CombinetTable AS (
     SELECT EXTRACT(MONTH FROM TIMESTAMP_ADD(checkinDate, INTERVAL - 6 HOUR)) AS month, id AS operacion
     FROM parkimovil-app.cargomovil_pd.PKM_SMART_QR_CHECKIN
     WHERE id IS NOT NULL AND TIMESTAMP_ADD(checkinDate, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00' AND qrCode LIKE 'E%'
@@ -141,41 +159,46 @@ WITH CombinetTable AS (
     SELECT EXTRACT(MONTH FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS month, idlog AS operacion
     FROM parkimovil-app.geosek_raspis.log_sek
     WHERE idlog IS NOT NULL AND function_ = 'open' AND TIMESTAMP_ADD(date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00'
-)
--- APP
-SELECT month, COUNT(DISTINCT operacion) AS Operaciones
-FROM CombinetTable
-GROUP BY month 
-ORDER BY month;
-"""
+    )
+    -- APP
+    SELECT month, COUNT(DISTINCT operacion) AS Operaciones
+    FROM CombinetTable
+    GROUP BY month 
+    ORDER BY month;
+    """
+    df_operaciones_general = client.query(operaciones_gen).to_dataframe()
+    return df_operaciones_general
 
-df_operaciones_general = client.query(operaciones_gen).to_dataframe()
+
+df_operaciones_general = operaciones_gen()
 op_last_month = df_operaciones_general['Operaciones'].iloc[-5]
 op_actual = df_operaciones_general['Operaciones'].iloc[-4]
 
-usuarios_multiservicio = """
-WITH usuariosTableED AS (
+@st.cache_data(ttl=3600)
+def usuarios_multiservicio():
+    usuarios_multiservicio = """
+    WITH usuariosTableED AS (
     SELECT S.phoneNumber AS user_id, T.transactionId AS Operacion, EXTRACT(MONTH FROM TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR)) AS month
     FROM parkimovil-app.cargomovil_pd.PKM_SMART_QR_TRANSACTIONS T
     JOIN parkimovil-app.cargomovil_pd.SEC_USER_PROFILE S
         ON T.userId = S.userId
     WHERE TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00'
-),
-usuariosTablePV AS (
+    ),
+    usuariosTablePV AS (
     SELECT S.phoneNumber AS user_id, T.transactionId AS Operacion, EXTRACT(MONTH FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS month
     FROM parkimovil-app.cargomovil_pd.PKM_TRANSACTION T
     JOIN parkimovil-app.cargomovil_pd.SEC_USER_PROFILE S
         ON T.userId = S.userId
     WHERE TIMESTAMP_ADD(date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00'
-),
-usuariosTableCA AS (
+    ),
+    usuariosTableCA AS (
     SELECT user AS user_id, idlog AS operacion, EXTRACT(MONTH FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS month
     FROM parkimovil-app.geosek_raspis.log_sek
     WHERE idlog IS NOT NULL AND function_ = 'open' AND TIMESTAMP_ADD(date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00'
-)
+    )
 
-SELECT month, COUNT(*) as users_multi
-FROM (
+    SELECT month, COUNT(*) as users_multi
+    FROM (
     SELECT user_id, month, COUNT(*) as appearances
     FROM (
         SELECT distinct user_id, month FROM usuariosTableED
@@ -185,21 +208,27 @@ FROM (
         SELECT distinct user_id, month FROM usuariosTableCA
     ) all_users
     GROUP BY user_id, month
-) multiple_appearances
-WHERE appearances > 1
-GROUP BY month
-ORDER BY month;       
-"""
+    ) multiple_appearances
+    WHERE appearances > 1
+    GROUP BY month
+    ORDER BY month;       
+    """
+    df_multiservicio_gen = client.query(usuarios_multiservicio).to_dataframe()
+    return df_multiservicio_gen
 
-df_multiservicio_gen = client.query(usuarios_multiservicio).to_dataframe()
+
+df_multiservicio_gen = usuarios_multiservicio()
 multiservicio_gen_last_month = df_multiservicio_gen['users_multi'].iloc[-3]
 multivervicio_actual = df_multiservicio_gen['users_multi'].iloc[-2]
 
 porcen_multi = (multivervicio_actual * 100) / mau_actual
 porcen_multi_last = (multiservicio_gen_last_month * 100) / mau_last_month
 
-multi_proyecto = """
-WITH combined AS (
+
+@st.cache_data(ttl=3600)
+def usuarios_multiproyecto():
+    multi_proyecto = """
+    WITH combined AS (
     SELECT CAT.parkingLotName AS proyecto, S.phoneNumber AS user_id, EXTRACT(YEAR FROM TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR)) AS year, EXTRACT(MONTH FROM TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR)) AS month
     FROM parkimovil-app.cargomovil_pd.PKM_SMART_QR_TRANSACTIONS T
     JOIN parkimovil-app.cargomovil_pd.SEC_USER_PROFILE S
@@ -221,20 +250,23 @@ WITH combined AS (
     JOIN `parkimovil-app`.geosek_raspis.raspis R
         ON L.QR = R.qr
     WHERE idlog IS NOT NULL AND function_ = 'open' AND TIMESTAMP_ADD(date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00'
-),
-usuarios_multiservicio AS (
+    ),
+    usuarios_multiservicio AS (
     SELECT user_id, year, month
     FROM combined
     GROUP BY user_id, year, month
     HAVING COUNT(DISTINCT proyecto) > 1
-)
-SELECT year, month, COUNT(*) AS usuarios_multiservicio_por_mes
-FROM usuarios_multiservicio
-GROUP BY year, month
-ORDER BY year, month;
-"""
+    )
+    SELECT year, month, COUNT(*) AS usuarios_multiservicio_por_mes
+    FROM usuarios_multiservicio
+    GROUP BY year, month
+    ORDER BY year, month;
+    """
+    df_multiproyecto_gen = client.query(multi_proyecto).to_dataframe()
+    return df_multiproyecto_gen
 
-df_multiproyecto_gen = client.query(multi_proyecto).to_dataframe()
+
+df_multiproyecto_gen = usuarios_multiproyecto()
 multiproyecto_gen_last_month = df_multiproyecto_gen['usuarios_multiservicio_por_mes'].iloc[-3]
 multiproyecto_actual = df_multiproyecto_gen['usuarios_multiservicio_por_mes'].iloc[-2]
 
@@ -242,13 +274,18 @@ porcen_proyec = (multiproyecto_actual * 100) / mau_actual
 porcen_proyec_last = (multiproyecto_gen_last_month * 100) / mau_last_month
 
 # POU GENERAL
-pou_general = """
+@st.cache_data(ttl=3600)
+def pou_general():
+    pou_general = """
     SELECT COUNT(DISTINCT qr) AS POU
     FROM parkimovil-app.geosek_raspis.raspis
     WHERE bridge IN (2, 3, 4, 6, 7, 8, 9, 10, 12, 13, 15, 16, 17, 18, 20, 21, 22, 25, 26, 29) AND monitor_active = 1;
-"""
+    """
+    pou_gen = client.query(pou_general).to_dataframe()
+    return pou_gen
 
-pou_gen = client.query(pou_general).to_dataframe()
+
+pou_gen = pou_general()
 pou_gen = pou_gen['POU'].iloc[-1]
 
 # PAISES CON PRESENCIA KIGO
@@ -257,30 +294,12 @@ num_paises = 3
 #CIUDADES CON PRESENCIA KIGO
 num_ciudades = 56
 
-# Activaciones
-activaciones = """
-WITH activaciones AS (
-    SELECT DISTINCT(id) as user, EXTRACT(MONTH FROM TIMESTAMP_ADD(expires, INTERVAL -6 HOUR)) AS  month
-    FROM parkimovil-app.cargomovil_pd.SEC_USER_ACTIVATION
-    WHERE TIMESTAMP_ADD(expires, INTERVAL -6 HOUR) >= '2024-01-01 00:00:00'
-    UNION ALL
-    SELECT DISTINCT(idusers) as user, EXTRACT(MONTH FROM TIMESTAMP_ADD(timestamp, INTERVAL -6 HOUR)) AS  month
-    FROM parkimovil-app.geosek_accesos.pre_users
-    WHERE TIMESTAMP_ADD(timestamp, INTERVAL -6 HOUR) >= '2024-01-01 00:00:00'
-)
-
-SELECT month, COUNT(*) as Activaciones
-FROM activaciones
-GROUP BY month
-ORDER BY month;
-"""
-df_activaciones = client.query(activaciones).to_dataframe()
-activaciones_last_month = df_activaciones['Activaciones'].iloc[-3]
-activaciones_actual = df_activaciones['Activaciones'].iloc[-2]
 
 # Proyectos Activos
-proyectos = """
-WITH proyectos_activiti AS (
+@st.cache_data(ttl=3600)
+def proyectos():
+    proyectos = """
+    WITH proyectos_activiti AS (
     SELECT EXTRACT(MONTH FROM TIMESTAMP_ADD(TED.paymentDate, INTERVAL -6 HOUR)) AS last_mothn, (COUNT(TED.transactionId) * 2) AS operaciones, CATED.parkingLotName AS proyecto
     FROM `parkimovil-app`.cargomovil_pd.PKM_SMART_QR_TRANSACTIONS TED
     JOIN `parkimovil-app`.cargomovil_pd.PKM_PARKING_LOT_CAT CATED
@@ -305,14 +324,17 @@ WITH proyectos_activiti AS (
     ON S.QR = R.qr
     WHERE EXTRACT(MONTH FROM S.date) = EXTRACT(MONTH FROM DATE_SUB(CURRENT_DATE(), INTERVAL 1 MONTH)) AND EXTRACT(DATE FROM date) >= '2024-01-01'
     GROUP BY EXTRACT(MONTH FROM S.date), R.alias
-)
+    )
 
-SELECT COUNT(proyecto)
-FROM proyectos_activiti
-WHERE operaciones > 50
-"""
+    SELECT COUNT(proyecto)
+    FROM proyectos_activiti
+    WHERE operaciones > 50
+    """
+    proyectos_activos_mes = client.query(proyectos).to_dataframe()
+    return proyectos_activos_mes
 
-proyectos_activos_mes = client.query(proyectos).to_dataframe()
+
+proyectos_activos_mes = proyectos()
 proyectos_activos_mes = proyectos_activos_mes.iat[0, 0]
 
 
@@ -542,30 +564,6 @@ fig_proyectos.update_layout(
 # Ajustar bordes redondeados y color del borde
 fig_proyectos.update_traces(title_font=dict(size=14))
 fig_proyectos.update_traces(gauge=dict(axis=dict(tickcolor="#F24405", tick0=2)))
-
-# INDICADOR ACTIVACIONES
-# Delta del Indicador
-fig_activaciones_gen = go.Figure(go.Indicator(
-    mode="number",
-    value=activaciones_actual,
-    domain={'x': [0, 1], 'y': [0, 1]},
-    title={'text': "Activaciones", 'font': {'color': "#F24405"}, 'align': 'center'},
-    delta = {'position': "bottom", 'reference': activaciones_last_month}
-))
-
-# Actualizar el diseño del indicador
-fig_activaciones_gen.update_layout(
-    paper_bgcolor="rgba(0,0,0,0)",  # Fondo transparente
-    plot_bgcolor="rgba(0,0,0,0)",  # Fondo transparente
-    margin=dict(l=20, r=20, t=20, b=20),  # Márgenes ajustados
-    height=100,  # Altura ajustada
-    width=200,  # Ancho ajustado
-    font=dict(color="#F24405"),  # Color del texto
-)
-
-# Ajustar bordes redondeados y color del borde
-fig_activaciones_gen.update_traces(title_font=dict(size=14))
-fig_activaciones_gen.update_traces(gauge=dict(axis=dict(tickcolor="#F24405", tick0=2)))
 
 # DESCARGAS
 # Delta del Indicador
