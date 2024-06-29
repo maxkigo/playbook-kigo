@@ -114,7 +114,6 @@ def get_gmv_data():
     return results.to_dataframe()
 
 
-
 @st.cache_data(ttl=3600)
 def get_gmv_data_month(selected_month):
 
@@ -198,8 +197,82 @@ def get_gmv_data_month(selected_month):
     return query_job
 
 
+@st.cache_data(ttl=3600)
+def gmv_hist():
+    query = """
+    WITH CombinetTable AS (
+    SELECT
+        EXTRACT(DATE FROM TIMESTAMP_ADD(paymentDate, INTERVAL -6 HOUR)) AS fecha,
+        total AS monto
+    FROM `parkimovil-app.cargomovil_pd.PKM_SMART_QR_TRANSACTIONS` T
+    WHERE TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00'
+    AND T.qrCode LIKE 'E%'
+    UNION ALL
+    SELECT
+        EXTRACT(DATE FROM TIMESTAMP_ADD(date, INTERVAL -6 HOUR)) AS Year,
+        totalAmount AS monto
+    FROM `parkimovil-app.cargomovil_pd.PKM_TRANSACTION` PV
+    WHERE TIMESTAMP_ADD(date, INTERVAL -6 HOUR) >= '2022-01-01 00:00:00'
+    ),
+    PensionesData AS (
+    SELECT
+        EXTRACT(DATE FROM TIMESTAMP_ADD(CAST(PLLP.charge_date AS TIMESTAMP), INTERVAL -6 HOUR)) AS Pension_Year,
+        SUM(IFNULL(TRN.amount, 0)) AS PENSIONES_CARD
+    FROM
+        `parkimovil-app.cargomovil_pd.PKM_PARKING_LOT_LODGING_PAYMENTS` PLLP
+    JOIN `parkimovil-app.cargomovil_pd.CDX_TRANSACTION` TRN
+        ON PLLP.transaction_id = TRN.id
+    WHERE payment_method = 'card'
+    AND TIMESTAMP_ADD(CAST(PLLP.charge_date AS TIMESTAMP), INTERVAL -6 HOUR) >= '2022-01-01 00:00:00'
+    GROUP BY Pension_Year
+    )
+
+    SELECT
+    fecha,
+    SUM(monto) + COALESCE(PD.PENSIONES_CARD, 0) AS GMV
+    FROM
+    CombinetTable CT
+    LEFT JOIN
+    PensionesData PD ON CT.fecha = PD.Pension_Year 
+    GROUP BY
+    fecha, PD.PENSIONES_CARD  -- Agregar PD.PENSIONES_CARD al GROUP BY
+    ORDER BY
+    fecha
+    """
+    df_gmv = client.query(query).to_dataframe()
+    return df_gmv
+
+df_gmv_bar = gmv_hist()
 
 
+# Convertir la columna 'date' a datetime
+df_gmv_bar['fecha'] = pd.to_datetime(df_gmv_bar['fecha'])
+
+# Crear una columna con el nombre del mes
+df_gmv_bar['month'] = df_gmv_bar['fecha'].dt.strftime('%B')
+df_gmv_bar['year'] = df_gmv_bar['fecha'].dt.strftime('%Y')
+
+# Agrupar por el nombre del mes y sumar los valores
+df_grouped = df_gmv_bar.groupby(['month', 'year'])['GMV'].sum().reset_index()
+
+# Renombrar las columnas
+df_grouped.columns = ['month', 'year', 'gmv']
+
+# Definir el orden de los meses
+month_order = ['January', 'February', 'March', 'April', 'May', 'June',
+               'July', 'August', 'September', 'October', 'November', 'December']
+
+# Convertir la columna 'month' a un tipo categórico con el orden especificado
+df_grouped['month'] = pd.Categorical(df_grouped['month'], categories=month_order, ordered=True)
+
+# Ordenar el DataFrame por el orden de los meses
+df_grouped = df_grouped.sort_values('month').reset_index(drop=True)
+colores_oficiales = ['#EEA31B', '#030140', '#4F70B7']
+fig_line = px.line(df_grouped, x='month', y='gmv', color='year', title='GMV Histórico',
+                   labels={'month': 'Mes', 'gmv': 'GMV', 'year': 'Año'},
+                   color_discrete_sequence=colores_oficiales)
+
+st.plotly_chart(fig_line, use_container_width=True)
 
 
 # Función para crear el gráfico donut sunburst con colores Kigo
