@@ -344,5 +344,9 @@ df_tran_serv = get_transaction_services()
 
 pie_operaciones = create_pie_chart(df_oper_serv)
 pie_transacciones = create_pie_chart_tran(df_tran_serv)
-st.plotly_chart(pie_operaciones, use_container_width=True)
-st.plotly_chart(pie_transacciones, use_container_width=True)
+
+col5, col6 = st.columns(2)
+with col5:
+    st.plotly_chart(pie_operaciones, use_container_width=True)
+with col6:
+    st.plotly_chart(pie_transacciones, use_container_width=True)
