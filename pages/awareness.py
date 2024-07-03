@@ -42,12 +42,16 @@ queries = {
             FROM parkimovil-app.cargomovil_pd.PKM_SMART_QR_TRANSACTIONS T
             JOIN parkimovil-app.cargomovil_pd.SEC_USER_PROFILE P 
                 ON T.userId = P.userId
+            JOIN `parkimovil-app`.cargomovil_pd.PKM_PARKING_LOT_CAT ECA
+                ON T.parkingLotId = ECA.id
             WHERE TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00'
             UNION ALL
             SELECT PF.phoneNumber AS user_id, EXTRACT(MONTH FROM TIMESTAMP_ADD(date, INTERVAL - 6 HOUR)) AS mes
             FROM parkimovil-app.cargomovil_pd.PKM_TRANSACTION PVT
             JOIN parkimovil-app.cargomovil_pd.SEC_USER_PROFILE PF
                 ON PVT.userId = PF.userId
+            JOIN `parkimovil-app`.cargomovil_pd.PKM_PARKING_METER_ZONE_CAT ZC
+                ON PVT.zoneId = ZC.id
             WHERE TIMESTAMP_ADD(date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00'
             UNION ALL 
             SELECT user AS user_id, EXTRACT(MONTH FROM date) AS mes
@@ -359,6 +363,75 @@ def dau_query():
     return df_dau
 
 
+def activaciones_segundos():
+    query = """
+    WITH UserActions AS (
+    SELECT
+    PRO.phoneNumber AS user_id,
+    TIMESTAMP_ADD(paymentDate, INTERVAL -6 HOUR) AS action_date,
+    TIMESTAMP_ADD(registered, INTERVAL -6 HOUR) AS registro
+    FROM
+    parkimovil-app.cargomovil_pd.PKM_SMART_QR_TRANSACTIONS T
+    JOIN parkimovil-app.cargomovil_pd.SEC_USER S
+    ON T.userId = S.id
+    JOIN parkimovil-app.cargomovil_pd.SEC_USER_PROFILE PRO
+    ON T.userId = PRO.id
+    WHERE
+    EXTRACT(DATE FROM TIMESTAMP_ADD(registered, INTERVAL -6 HOUR)) >= '2023-01-01'
+    UNION ALL
+    SELECT
+    PROV.phoneNumber AS user_id,
+    TIMESTAMP_ADD(date, INTERVAL -6 HOUR) AS action_date,
+    TIMESTAMP_ADD(registered, INTERVAL -6 HOUR) AS registro
+    FROM
+    parkimovil-app.cargomovil_pd.PKM_TRANSACTION PV
+    JOIN parkimovil-app.cargomovil_pd.SEC_USER SV
+        ON PV.userId = SV.id
+    JOIN parkimovil-app.cargomovil_pd.SEC_USER_PROFILE PROV
+        ON PV.userId = PROV.id
+    WHERE
+    EXTRACT(DATE FROM TIMESTAMP_ADD(registered, INTERVAL -6 HOUR)) >= '2023-01-01'
+    UNION ALL 
+    SELECT
+    PROA.phoneNumber AS user_id,
+    EXTRACT(DATETIME FROM date) AS action_date,
+    TIMESTAMP_ADD(registered, INTERVAL -6 HOUR) AS registro
+    FROM
+    parkimovil-app.geosek_raspis.log_sek AC
+    JOIN parkimovil-app.cargomovil_pd.SEC_USER_PROFILE PROA
+        ON AC.user = PROA.phoneNumber
+    JOIN parkimovil-app.cargomovil_pd.SEC_USER SA
+        ON PROA.userId = SA.id
+    WHERE
+    EXTRACT(DATE FROM registered) >= '2023-01-01'
+    ),
+    AllUserActions AS (
+    SELECT
+    ua.user_id,
+    ua.action_date,
+    ua.registro,
+    ROW_NUMBER() OVER (PARTITION BY ua.user_id ORDER BY ua.action_date) AS action_number
+    FROM
+    UserActions ua
+    ORDER BY ua.action_date
+    )
+    SELECT
+    CONCAT(EXTRACT(YEAR FROM ua.action_date), '-W', LPAD(CAST(EXTRACT(WEEK FROM ua.action_date) AS STRING), 2, '0')) AS week_year,
+    COUNT(CASE WHEN ua.action_number = 1 THEN 1 END) AS primer_uso,
+    COUNT(CASE WHEN ua.action_number = 2 THEN 1 END) AS segundo_uso,
+    COUNT(CASE WHEN (EXTRACT(WEEK FROM ua.action_date) = EXTRACT(WEEK FROM ua.registro)) AND (ua.action_number = 1) AND (EXTRACT(YEAR FROM ua.action_date) = EXTRACT(YEAR FROM ua.registro)) THEN 1 END) AS registros_activados
+    FROM
+    AllUserActions ua
+    WHERE EXTRACT(YEAR FROM ua.action_date) = 2024
+    GROUP BY
+    week_year
+    ORDER BY
+    week_year
+    """
+    df = client.query(query).to_dataframe()
+    return df
+
+
 df_dau = dau_query()
 # Calcular el primer y último día del mes pasado
 fecha_actual = datetime.now()
@@ -396,3 +469,34 @@ with col14:
     st.metric(label="DAU Promedio Mes en Curso", value=dau_promedio_mes_actual)
 with col15:
     st.metric(label='DAU/MAU Radio', value=round((dau_promedio_mes_pasado / 319278) * 100, 2))
+
+st.subheader('Registros vs Usos')
+
+df_usos = activaciones_segundos()
+
+def create_bar_chart(df):
+    # Paleta de colores personalizada
+    colors = ["#EEA31B", "#4F70B7", "#030140"]
+
+    fig = px.bar(df, x='week_year', y='primer_uso',
+                   color_discrete_sequence=colors)
+
+    fig = go.Figure(fig)
+
+    # Agregar la segunda traza
+    fig.add_trace(go.Bar(
+        x=df['week_year'],
+        y=df['segundo_uso'],
+        name='Segundo Uso'))
+    fig.add_trace(go.Bar(
+        x=df['week_year'],
+        y=df['registros_activados'],
+        name='Activados'
+    ))
+    fig.update_layout(barmode='group')
+
+    return fig
+
+fig_usos = create_bar_chart(df_usos)
+
+st.plotly_chart(fig_usos, use_container_width=True)
