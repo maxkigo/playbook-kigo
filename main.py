@@ -341,6 +341,7 @@ proyectos_activos_mes = proyectos_activos_mes.iat[0, 0]
 # DESCARGAS IOS Y ANDROID
 descargas_abril = 72396
 descargas_marzo = 32350 + 39439
+descargas_junio = 35738 + 40632
 
 # ---------------------------------------------------------INDICADORES Y GRÁFICAS------------------------------------------------------------------------------------
 
@@ -371,7 +372,7 @@ fig_mau_gen.update_traces(gauge=dict(axis=dict(tickcolor="#F24405", tick0=2)))
 # INDICADOR GMV GENERAL
 fig_gmv_gen = go.Figure(go.Indicator(
     mode="number",
-    value=gmv_actual + 5000000,
+    value=gmv_actual + 6819787,
     domain={'x': [0, 1], 'y': [0, 1]},
     title={'text': "GMV", 'font': {'color': "#F24405"}, 'align': 'center'}
 ))
@@ -569,7 +570,7 @@ fig_proyectos.update_traces(gauge=dict(axis=dict(tickcolor="#F24405", tick0=2)))
 # Delta del Indicador
 fig_descargas = go.Figure(go.Indicator(
     mode="number",
-    value=descargas_abril,
+    value=descargas_junio,
     domain={'x': [0, 1], 'y': [0, 1]},
     title={'text': "Descargas", 'font': {'color': "#F24405"}, 'align': 'center'},
     delta = {'position': "bottom", 'reference': descargas_marzo}
