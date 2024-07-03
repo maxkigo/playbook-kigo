@@ -372,7 +372,7 @@ fig_mau_gen.update_traces(gauge=dict(axis=dict(tickcolor="#F24405", tick0=2)))
 # INDICADOR GMV GENERAL
 fig_gmv_gen = go.Figure(go.Indicator(
     mode="number",
-    value=gmv_actual + 6819787,
+    value=gmv_actual + 4861524,
     domain={'x': [0, 1], 'y': [0, 1]},
     title={'text': "GMV", 'font': {'color': "#F24405"}, 'align': 'center'}
 ))
