@@ -27,180 +27,155 @@ credentials = service_account.Credentials.from_service_account_info(
 )
 client = bigquery.Client(credentials=credentials)
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def get_proyectos_activos():
-    query = """
-    WITH proyectos_activiti AS (
-        SELECT 
-            EXTRACT(MONTH FROM TIMESTAMP_ADD(TED.paymentDate, INTERVAL -6 HOUR)) AS month, 
-            (COUNT(TED.transactionId) * 2) AS operaciones, 
-            CATED.parkingLotName AS proyecto
-        FROM 
-            `parkimovil-app`.cargomovil_pd.PKM_SMART_QR_TRANSACTIONS TED
-        JOIN 
-            `parkimovil-app`.cargomovil_pd.PKM_PARKING_LOT_CAT CATED
-        ON 
-            TED.parkingLotId = CATED.id
-        WHERE 
-            EXTRACT(YEAR FROM TIMESTAMP_ADD(TED.paymentDate, INTERVAL -6 HOUR)) = 2024 
-            AND EXTRACT(DATE FROM TIMESTAMP_ADD(paymentDate, INTERVAL -6 HOUR)) >= '2024-01-01'
-        GROUP BY 
-            month, CATED.parkingLotName
 
+@st.cache_data(ttl=3600)
+def tree_map_proyects():
+    query_ed_estado = """
+    SELECT ST.name AS state, 
+           CASE 
+               WHEN CI.name LIKE 'Puebla%' THEN 'Puebla'
+               ELSE CI.name 
+           END AS ciudad, 
+           CASE 
+               WHEN CAT.parkingLotName LIKE '%LOMAS%' THEN 'Lomas de Angelopolis'
+               ELSE CAT.parkingLotName
+           END AS proyecto, 
+           COUNT(DISTINCT T.userId) AS usuarios, 
+           EXTRACT(MONTH FROM paymentDate) AS mes
+    FROM parkimovil-app.cargomovil_pd.PKM_SMART_QR_TRANSACTIONS T
+    JOIN parkimovil-app.cargomovil_pd.PKM_PARKING_LOT_CAT CAT
+        ON T.parkinglotId = CAT.id
+    JOIN parkimovil-app.cargomovil_pd.GEN_CITY_CAT CI
+        ON CAT.cityId = CI.id
+    JOIN parkimovil-app.cargomovil_pd.GEN_STATE_PROVINCE_CAT ST
+        ON CI.stateId = ST.id
+    WHERE EXTRACT(YEAR FROM paymentDate) = 2024
+    GROUP BY ST.name, CASE WHEN CI.name LIKE 'Puebla%' THEN 'Puebla' ELSE CI.name END, CASE WHEN CAT.parkingLotName LIKE '%LOMAS%' THEN 'Lomas de Angelopolis' ELSE CAT.parkingLotName END, EXTRACT(MONTH FROM paymentDate)
+
+    UNION ALL
+
+    SELECT ST.name AS state, 
+           CASE 
+               WHEN CI.name LIKE 'Puebla%' THEN 'Puebla'
+               ELSE CI.name 
+           END AS ciudad, 
+           CASE 
+               WHEN CAT.name LIKE '%LOMAS%' THEN 'Lomas de Angelopolis'
+               ELSE CONCAT(CAT.name, ' PV') 
+           END AS proyecto, 
+           COUNT(DISTINCT T.userId) AS usuarios, 
+           EXTRACT(MONTH FROM date) AS mes
+    FROM parkimovil-app.cargomovil_pd.PKM_TRANSACTION T
+    JOIN parkimovil-app.cargomovil_pd.PKM_PARKING_METER_ZONE_CAT CAT
+        ON T.zoneid = CAT.id
+    JOIN parkimovil-app.cargomovil_pd.GEN_CITY_CAT CI
+        ON CAT.cityId = CI.id
+    JOIN parkimovil-app.cargomovil_pd.GEN_STATE_PROVINCE_CAT ST
+        ON CI.stateId = ST.id
+    WHERE EXTRACT(YEAR FROM date) = 2024
+    GROUP BY ST.name, CASE WHEN CI.name LIKE 'Puebla%' THEN 'Puebla' ELSE CI.name END, CASE WHEN CAT.name LIKE '%LOMAS%' THEN 'Lomas de Angelopolis' ELSE CONCAT(CAT.name, ' PV') END, EXTRACT(MONTH FROM date)
+
+    UNION ALL 
+
+    SELECT ZM.estado AS state, 
+           CASE 
+               WHEN CACY.ciudad LIKE 'Puebla%' THEN 'Puebla'
+               ELSE CACY.ciudad 
+           END AS ciudad, 
+           CASE 
+               WHEN R.alias LIKE '%LOMAS%' THEN 'Lomas de Angelopolis'
+               ELSE R.alias 
+           END AS proyecto, 
+           COUNT(DISTINCT L.user) AS usuarios, 
+           EXTRACT(MONTH FROM date) AS mes
+    FROM parkimovil-app.geosek_raspis.log_sek L
+    JOIN parkimovil-app.geosek_raspis.raspis R
+        ON L.QR = R.qr
+    JOIN parkimovil-app.cargomovil_pd.ca_citys CACY
+        ON R.alias = CACY.proyecto 
+    JOIN parkimovil-app.cargomovil_pd.zona_metropolitana ZM  
+        ON CACY.ciudad = ZM.municipio
+    WHERE TIMESTAMP_ADD(L.date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00'
+    GROUP BY ZM.estado, CASE WHEN CACY.ciudad LIKE 'Puebla%' THEN 'Puebla' 
+    ELSE CACY.ciudad END, CASE WHEN R.alias LIKE '%LOMAS%' THEN 'Lomas de Angelopolis' 
+    ELSE R.alias END, EXTRACT(MONTH FROM date)
+    """
+    df_state_mau = client.query(query_ed_estado).to_dataframe()
+    return df_state_mau
+
+
+def parcats():
+    query_operaciones = """
+    WITH Operaciones AS (
+        SELECT CAT.parkingLotName AS proyecto, S.phoneNumber AS user_id, 'ED' AS servicio, TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR) AS fecha_operacion
+        FROM parkimovil-app.cargomovil_pd.PKM_SMART_QR_TRANSACTIONS T
+        JOIN parkimovil-app.cargomovil_pd.SEC_USER_PROFILE S ON T.userId = S.userId
+        JOIN `parkimovil-app`.cargomovil_pd.PKM_PARKING_LOT_CAT CAT ON T.parkingLotId = CAT.id
+        WHERE TIMESTAMP_ADD(paymentDate, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00' AND T.qrCode LIKE "E%"
         UNION ALL
-
-        SELECT 
-            EXTRACT(MONTH FROM TIMESTAMP_ADD(TPV.date, INTERVAL -6 HOUR)) AS month, 
-            COUNT(TPV.transactionId) AS operaciones, 
-            PVCAT.name AS proyecto
-        FROM 
-            `parkimovil-app`.cargomovil_pd.PKM_TRANSACTION TPV
-        JOIN 
-            `parkimovil-app`.cargomovil_pd.PKM_PARKING_METER_ZONE_CAT PVCAT
-        ON 
-            TPV.zoneId = PVCAT.id
-        WHERE 
-            EXTRACT(YEAR FROM TIMESTAMP_ADD(TPV.date, INTERVAL -6 HOUR)) = 2024 
-            AND EXTRACT(DATE FROM TIMESTAMP_ADD(date, INTERVAL -6 HOUR)) >= '2024-01-01'
-        GROUP BY 
-            month, PVCAT.name
-
+        SELECT ZCA.name AS proyecto, S.phoneNumber AS user_id, 'PV' AS servicio, TIMESTAMP_ADD(date, INTERVAL - 6 HOUR) AS fecha_operacion
+        FROM parkimovil-app.cargomovil_pd.PKM_TRANSACTION T
+        JOIN parkimovil-app.cargomovil_pd.SEC_USER_PROFILE S ON T.userId = S.userId
+        JOIN `parkimovil-app`.cargomovil_pd.PKM_PARKING_METER_ZONE_CAT ZCA ON T.zoneId = ZCA.id
+        WHERE TIMESTAMP_ADD(date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00' AND T.paymentType != 1
         UNION ALL
-
-        SELECT 
-            EXTRACT(MONTH FROM S.date) AS month, 
-            COUNT(S.function_) AS operaciones, 
-            R.alias AS proyecto
-        FROM 
-            `parkimovil-app`.geosek_raspis.log_sek S
-        JOIN 
-            `parkimovil-app`.geosek_raspis.raspis R
-        ON 
-            S.QR = R.qr
-        WHERE 
-            EXTRACT(YEAR FROM S.date) = 2024 
-            AND EXTRACT(DATE FROM date) >= '2024-01-01'
-        GROUP BY 
-            month, R.alias
+        SELECT R.alias AS proyecto, user AS user_id, 'CA' AS servicio, DATETIME(date) AS fecha_operacion
+        FROM parkimovil-app.geosek_raspis.log_sek L
+        JOIN `parkimovil-app`.geosek_raspis.raspis R ON L.QR = R.qr
+        WHERE idlog IS NOT NULL AND function_ = 'open' AND TIMESTAMP_ADD(date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00'
     ),
-
-    filtered_proyectos AS (
-        SELECT 
-            month,
-            proyecto,
-            SUM(operaciones) AS total_operaciones
-        FROM 
-            proyectos_activiti
-        GROUP BY 
-            month, proyecto
-        HAVING 
-            total_operaciones > 100
+    RankedOperaciones AS (
+        SELECT
+            *,
+            ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY fecha_operacion) AS rank_primera_operacion
+        FROM Operaciones
     )
 
-    SELECT 
-        proyecto,
-        IFNULL(SUM(IF(month = 1, total_operaciones, NULL)), 0) AS Enero,
-        IFNULL(SUM(IF(month = 2, total_operaciones, NULL)), 0) AS Febrero,
-        IFNULL(SUM(IF(month = 3, total_operaciones, NULL)), 0) AS Marzo,
-        IFNULL(SUM(IF(month = 4, total_operaciones, NULL)), 0) AS Abril,
-        IFNULL(SUM(IF(month = 5, total_operaciones, NULL)), 0) AS Mayo,
-        IFNULL(SUM(IF(month = 6, total_operaciones, NULL)), 0) AS Junio,
-        IFNULL(SUM(IF(month = 7, total_operaciones, NULL)), 0) AS Julio,
-        IFNULL(SUM(IF(month = 8, total_operaciones, NULL)), 0) AS Agosto,
-        IFNULL(SUM(IF(month = 9, total_operaciones, NULL)), 0) AS Septiembre,
-        IFNULL(SUM(IF(month = 10, total_operaciones, NULL)), 0) AS Octubre,
-        IFNULL(SUM(IF(month = 11, total_operaciones, NULL)), 0) AS Noviembre,
-        IFNULL(SUM(IF(month = 12, total_operaciones, NULL)), 0) AS Diciembre
-    FROM 
-        filtered_proyectos
-    GROUP BY 
-        proyecto
-    ORDER BY 
-        proyecto
+    SELECT
+        user_id,
+        COUNT(DISTINCT proyecto) > 1 AS multiproyecto,
+        COUNT(DISTINCT servicio) > 1 AS multiservicio,
+        COUNT(*) AS num_operaciones,
+        MAX(CASE WHEN rank_primera_operacion = 1 THEN servicio ELSE NULL END) AS primer_servicio
+    FROM RankedOperaciones
+    GROUP BY user_id
     """
-    return client.query(query).to_dataframe()
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def get_proyectos_errores():
-    query = """
-    SELECT EXTRACT(YEAR FROM date) AS year,
-           EXTRACT(WEEK FROM date) AS week,
-           SUM(CASE WHEN function_ LIKE 'open%error%500' OR function_
-           IN ('open_error_', 'open_error') THEN 1 END) AS errores_desconexion,
-           SUM(CASE WHEN function_ LIKE '%501%' THEN 1 END) AS errores_presencia
-    FROM (
-        SELECT date, function_ FROM parkimovil-app.geosek_raspis.log L 
-         JOIN `parkimovil-app`.geosek_raspis.raspis R
-            ON L.QR = R.qr
-         UNION ALL            
-         SELECT date, function_ FROM parkimovil-app.geosek_raspis.log_sek LS            
-         JOIN `parkimovil-app`.geosek_raspis.raspis R            
-            ON LS.QR = R.qr
-    ) AS all_logs
-        WHERE EXTRACT(YEAR FROM date) >= 2024
-        AND EXTRACT(WEEK FROM date)
-        <= EXTRACT(WEEK FROM CURRENT_DATE("America/Mexico_City"))
-    GROUP BY year, week
-    ORDER BY year, week
-    """
-    return client.query(query).to_dataframe()
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def get_proyectos_lecturas():
-    query = """
-    SELECT EXTRACT(YEAR FROM date) AS year,
-           EXTRACT(WEEK FROM date) AS week,
-           SUM(CASE WHEN function_ IN ('open', 'open_rf', 'open_qr') THEN 1 END) AS lecturas_exitosas,
-           SUM(CASE WHEN function_ LIKE 'open%error%500' OR function_ IN ('open_error_', 'open_error') THEN 1 END) AS errores_desconexion,
-           SUM(CASE WHEN function_ LIKE '%501%' THEN 1 END) AS errores_presencia,
-           SUM(CASE WHEN function_ LIKE 'denied%' THEN 1 END) AS accesos_denegados
-    FROM (
-        SELECT date, function_ FROM parkimovil-app.geosek_raspis.log L
-        JOIN `parkimovil-app`.geosek_raspis.raspis R
-        ON L.QR = R.qr
-        UNION ALL
-        SELECT date, function_ FROM parkimovil-app.geosek_raspis.log_sek LS
-        JOIN `parkimovil-app`.geosek_raspis.raspis R
-        ON LS.QR = R.qr
-    ) AS all_logs
-    WHERE EXTRACT(YEAR FROM date) >= 2024
-    GROUP BY year, week
-    ORDER BY year, week
-    """
-    return client.query(query).to_dataframe()
-
-df_errores = get_proyectos_errores()
-proyectos_activos_pivot = get_proyectos_activos()
-df_lecturas = get_proyectos_lecturas()
-
-# Crear figura de Plotly
-fig_errores = go.Figure()
-fig_errores.add_trace(go.Bar(x=df_errores['week'], y=df_errores['errores_desconexion'], name='Errores de Desconexión'))
-fig_errores.add_trace(go.Bar(x=df_errores['week'], y=df_errores['errores_presencia'], name='Errores de Presencia'))
-fig_errores.update_layout(title='Errores Semanales', xaxis_title='Semana', yaxis_title='Cantidad de Errores', barmode='group')
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def create_stacked_bar_chart(df):
-    df['total'] = df[['lecturas_exitosas', 'errores_desconexion', 'errores_presencia', 'accesos_denegados']].sum(axis=1)
-    df['lecturas_exitosas_pct'] = df['lecturas_exitosas'] / df['total'] * 100
-    df['errores_desconexion_pct'] = df['errores_desconexion'] / df['total'] * 100
-    df['errores_presencia_pct'] = df['errores_presencia'] / df['total'] * 100
-    df['accesos_denegados_pct'] = df['accesos_denegados'] / df['total'] * 100
-
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=df['week'], y=df['lecturas_exitosas_pct'], name='Lecturas Exitosas', text=df['lecturas_exitosas_pct'].round(2).astype(str) + '%', hovertext=df['lecturas_exitosas'].astype(str), textposition='inside'))
-    fig.add_trace(go.Bar(x=df['week'], y=df['errores_desconexion_pct'], name='Errores Desconexión', text=df['errores_desconexion_pct'].round(2).astype(str) + '%', hovertext=df['errores_desconexion'].astype(str), textposition='inside'))
-    fig.add_trace(go.Bar(x=df['week'], y=df['errores_presencia_pct'], name='Errores Presencia', text=df['errores_presencia_pct'].round(2).astype(str) + '%', hovertext=df['errores_presencia'].astype(str), textposition='inside'))
-    fig.add_trace(go.Bar(x=df['week'], y=df['accesos_denegados_pct'], name='Accesos Denegados', text=df['accesos_denegados_pct'].round(2).astype(str) + '%', hovertext=df['accesos_denegados'].astype(str), textposition='inside'))
-
-    fig.update_layout(title='Porcentaje de Tipos de Lecturas Semanal', xaxis_title='Semana del Año', yaxis_title='Porcentaje (%)', barmode='stack')
-    return fig
+    df_parcats = client.query(query_operaciones).to_dataframe()
+    return df_parcats
 
 
+df = parcats()
+# Definir dimensiones para el Parcats
+primer_servicio_dim = go.parcats.Dimension(values=df['primer_servicio'], label="Primer Servicio")
+multiproyecto_dim = go.parcats.Dimension(values=df['multiproyecto'], label="Multiproyecto")
+multiservicio_dim = go.parcats.Dimension(values=df['multiservicio'], label="Multiservicio")
+
+# Crear escala de colores basada en multiproyecto y multiservicio
+colorscale = [[0, 'gray'], [1, 'firebrick']]
+color = df['multiproyecto'].astype(int) + df['multiservicio'].astype(int)  # Sumar booleanos convertidos a enteros
+
+# Crear figura de Parcats
+fig = go.Figure(data=[go.Parcats(dimensions=[primer_servicio_dim, multiproyecto_dim, multiservicio_dim],
+                                 line={'color': color, 'colorscale': colorscale},
+                                 hoveron='color', hoverinfo='count+probability',
+                                 labelfont={'size': 18, 'family': 'Times'},
+                                 tickfont={'size': 16, 'family': 'Times'},
+                                 arrangement='freeform')])
+
+fig.update_layout(
+    title='Análisis de Usuarios',
+    height=800
+)
 
 
-fig_stacked_bar_chart = create_stacked_bar_chart(df_lecturas)
+df_state_mau = tree_map_proyects()
 
-st.plotly_chart(fig_errores, use_container_width=True)
-st.plotly_chart(fig_stacked_bar_chart, use_container_width=True)
+fig_tree = px.treemap(df_state_mau[df_state_mau['mes'] == 6], path=['state', 'ciudad', 'proyecto'], values='usuarios',
+                 color='usuarios', hover_data=['state', 'ciudad', 'proyecto', 'usuarios'],
+                 title='Usuarios por Ciudad y Estado', color_continuous_scale='Viridis')
+
+st.plotly_chart(fig_tree, use_container_width=True)
+st.plotly_chart(fig, use_container_width=True)
+
+
 
