@@ -93,7 +93,7 @@ def tree_map_proyects():
         ON L.QR = R.qr
     JOIN parkimovil-app.cargomovil_pd.ca_citys CACY
         ON R.alias = CACY.proyecto 
-    JOIN parkimovil-app.cargomovil_pd.zona_metropolitana ZM  
+    JOIN parkimovil-app.cargomovil_pd.zona_metropolitana_new ZM  
         ON CACY.ciudad = ZM.municipio
     WHERE TIMESTAMP_ADD(L.date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00'
     GROUP BY ZM.estado, CASE WHEN CACY.ciudad LIKE 'Puebla%' THEN 'Puebla' 
