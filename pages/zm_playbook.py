@@ -339,7 +339,8 @@ ORDER BY month;
     df_mau_zm = client.query(query).to_dataframe()
     return df_mau_zm
 
-zona_metropolinata = ['ZM Puebla', 'ZM Monterrey', 'ZM León', 'ZM Hermosillo', 'ZM Guadalajara', 'ZM Tijuana', 'ZM CDMX',
+zona_metropolinata = ['ZM Puebla', 'ZM Monterrey', 'ZM León', 'ZM Hermosillo', 'ZM Guadalajara', 'ZM Tijuana',
+                      'ZM CDMX',
                       'ZM Veracruz', 'ZM Cancún', 'ZM Chihuahua', 'ZM Tuxtla', 'ZM Querétaro', 'ZM Torreón', 'ZM Juárez']
 zona_metropolinata_seleccionada = st.selectbox('Selecciona una Zona Metropolitana:', zona_metropolinata)
 
