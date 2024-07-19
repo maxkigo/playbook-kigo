@@ -33,7 +33,7 @@ def zm_playbook(zona_metropolitana):
         ON T.parkinglotId = CAT.id
     JOIN parkimovil-app.cargomovil_pd.GEN_CITY_CAT C
         ON CAT.cityId = C.id
-    LEFT JOIN parkimovil-app.cargomovil_pd.zona_metropolitana Z
+    LEFT JOIN parkimovil-app.cargomovil_pd.zona_metropolitana_new Z
         ON (C.name = Z.municipio OR 
             (C.name = 'Puebla' AND Z.municipio = 'Puebla de Zaragoza') 
             OR (C.name = 'Hermosillo ' AND Z.municipio = 'Hermosillo')
@@ -50,7 +50,7 @@ def zm_playbook(zona_metropolitana):
         ON PVT.zoneId = PCA.id
     JOIN parkimovil-app.cargomovil_pd.GEN_CITY_CAT C
         ON PCA.cityId = C.id
-    LEFT JOIN parkimovil-app.cargomovil_pd.zona_metropolitana Z
+    LEFT JOIN parkimovil-app.cargomovil_pd.zona_metropolitana_new Z
         ON (C.name = Z.municipio OR 
             (C.name = 'Puebla' AND Z.municipio = 'Puebla de Zaragoza') 
             OR (C.name = 'Hermosillo ' AND Z.municipio = 'Hermosillo')
@@ -65,7 +65,7 @@ def zm_playbook(zona_metropolitana):
         ON L.QR = R.qr
     JOIN `parkimovil-app`.cargomovil_pd.ca_citys CACY
         ON R.alias = CACY.proyecto 
-    JOIN `parkimovil-app`.cargomovil_pd.zona_metropolitana ZM  
+    LEFT JOIN `parkimovil-app`.cargomovil_pd.zona_metropolitana_new ZM  
         ON (CACY.ciudad = ZM.municipio OR 
             (CACY.ciudad = 'Puebla' AND ZM.municipio = 'Puebla de Zaragoza') 
             OR (CACY.ciudad = 'Hermosillo ' AND ZM.municipio = 'Hermosillo')
@@ -97,7 +97,7 @@ def df_multiservicio_zm(zona_metropolitana):
         ON T.parkinglotId = CAT.id
     JOIN parkimovil-app.cargomovil_pd.GEN_CITY_CAT C
         ON CAT.cityId = C.id
-    LEFT JOIN parkimovil-app.cargomovil_pd.zona_metropolitana Z
+    LEFT JOIN parkimovil-app.cargomovil_pd.zona_metropolitana_new Z
         ON (C.name = Z.municipio OR 
             (C.name = 'Puebla' AND Z.municipio = 'Puebla de Zaragoza') 
             OR (C.name = 'Hermosillo ' AND Z.municipio = 'Hermosillo')
@@ -115,7 +115,7 @@ def df_multiservicio_zm(zona_metropolitana):
         ON PVT.zoneId = PCA.id
     JOIN parkimovil-app.cargomovil_pd.GEN_CITY_CAT C
         ON PCA.cityId = C.id
-    LEFT JOIN parkimovil-app.cargomovil_pd.zona_metropolitana Z
+    LEFT JOIN parkimovil-app.cargomovil_pd.zona_metropolitana_new Z
         ON (C.name = Z.municipio OR 
             (C.name = 'Puebla' AND Z.municipio = 'Puebla de Zaragoza') 
             OR (C.name = 'Hermosillo ' AND Z.municipio = 'Hermosillo')
@@ -131,7 +131,7 @@ def df_multiservicio_zm(zona_metropolitana):
         ON L.QR = R.qr
     JOIN `parkimovil-app`.cargomovil_pd.ca_citys CACY
         ON R.alias = CACY.proyecto 
-    JOIN `parkimovil-app`.cargomovil_pd.zona_metropolitana ZM  
+    JOIN `parkimovil-app`.cargomovil_pd.zona_metropolitana_new ZM  
         ON (CACY.ciudad = ZM.municipio OR 
             (CACY.ciudad = 'Puebla' AND ZM.municipio = 'Puebla de Zaragoza') 
             OR (CACY.ciudad = 'Hermosillo ' AND ZM.municipio = 'Hermosillo')
@@ -167,7 +167,7 @@ ORDER BY month"""
 def poblacion_zm(zona_metropolitana):
     query = f"""
     SELECT SUM(CAST(REPLACE(REPLACE(poblacion, '.', ''), ',', '.') AS FLOAT64)) AS poblacion
-    FROM `parkimovil-app`.cargomovil_pd.zona_metropolitana
+    FROM `parkimovil-app`.cargomovil_pd.zona_metropolitana_new
     WHERE zm = '{zona_metropolitana}'
     """
     df_poblacion_zm = client.query(query).to_dataframe()
@@ -189,7 +189,7 @@ def operaciones_avg(zona_metropolitana):
         ON T.parkinglotId = CAT.id
     JOIN parkimovil-app.cargomovil_pd.GEN_CITY_CAT C
         ON CAT.cityId = C.id
-    LEFT JOIN parkimovil-app.cargomovil_pd.zona_metropolitana Z
+    LEFT JOIN parkimovil-app.cargomovil_pd.zona_metropolitana_new Z
         ON (C.name = Z.municipio OR
             (C.name = 'Puebla' AND Z.municipio = 'Puebla de Zaragoza')
             OR (C.name = 'Hermosillo ' AND Z.municipio = 'Hermosillo'))
@@ -209,7 +209,7 @@ def operaciones_avg(zona_metropolitana):
         ON T.parkinglotId = CAT.id
     JOIN parkimovil-app.cargomovil_pd.GEN_CITY_CAT C
         ON CAT.cityId = C.id
-    LEFT JOIN parkimovil-app.cargomovil_pd.zona_metropolitana Z
+    LEFT JOIN parkimovil-app.cargomovil_pd.zona_metropolitana_new Z
         ON (C.name = Z.municipio OR
             (C.name = 'Puebla' AND Z.municipio = 'Puebla de Zaragoza')
             OR (C.name = 'Hermosillo ' AND Z.municipio = 'Hermosillo'))
@@ -229,7 +229,7 @@ def operaciones_avg(zona_metropolitana):
         ON T.zoneId = PCA.id
     JOIN parkimovil-app.cargomovil_pd.GEN_CITY_CAT C
         ON PCA.cityId = C.id
-    LEFT JOIN parkimovil-app.cargomovil_pd.zona_metropolitana Z
+    LEFT JOIN parkimovil-app.cargomovil_pd.zona_metropolitana_new Z
         ON (C.name = Z.municipio OR
             (C.name = 'Puebla' AND Z.municipio = 'Puebla de Zaragoza')
             OR (C.name = 'Hermosillo ' AND Z.municipio = 'Hermosillo'))
@@ -247,7 +247,7 @@ def operaciones_avg(zona_metropolitana):
         ON L.QR = R.qr
     JOIN parkimovil-app.cargomovil_pd.ca_citys CACY
         ON R.alias = CACY.proyecto
-    LEFT JOIN parkimovil-app.cargomovil_pd.zona_metropolitana Z
+    LEFT JOIN parkimovil-app.cargomovil_pd.zona_metropolitana_new Z
         ON CACY.ciudad = Z.municipio
     WHERE idlog IS NOT NULL AND function_ = 'open' AND TIMESTAMP_ADD(date, INTERVAL - 6 HOUR) >= '2024-01-01 00:00:00'
 )
@@ -289,7 +289,7 @@ def mau_proyecto_zm(zona_metropolitana):
         ON T.parkinglotId = CAT.id
     JOIN parkimovil-app.cargomovil_pd.GEN_CITY_CAT C
         ON CAT.cityId = C.id
-    LEFT JOIN parkimovil-app.cargomovil_pd.zona_metropolitana Z
+    LEFT JOIN parkimovil-app.cargomovil_pd.zona_metropolitana_new Z
         ON (C.name = Z.municipio OR
             (C.name = 'Puebla' AND Z.municipio = 'Puebla de Zaragoza')
             OR (C.name = 'Hermosillo ' AND Z.municipio = 'Hermosillo')
@@ -306,7 +306,7 @@ def mau_proyecto_zm(zona_metropolitana):
         ON PVT.zoneId = PCA.id
     JOIN parkimovil-app.cargomovil_pd.GEN_CITY_CAT C
         ON PCA.cityId = C.id
-    LEFT JOIN parkimovil-app.cargomovil_pd.zona_metropolitana Z
+    LEFT JOIN parkimovil-app.cargomovil_pd.zona_metropolitana_new Z
         ON (C.name = Z.municipio OR
             (C.name = 'Puebla' AND Z.municipio = 'Puebla de Zaragoza')
             OR (C.name = 'Hermosillo ' AND Z.municipio = 'Hermosillo')
@@ -321,7 +321,7 @@ def mau_proyecto_zm(zona_metropolitana):
         ON L.QR = R.qr
     JOIN `parkimovil-app`.cargomovil_pd.ca_citys CACY
         ON R.alias = CACY.proyecto
-    JOIN `parkimovil-app`.cargomovil_pd.zona_metropolitana ZM
+    JOIN `parkimovil-app`.cargomovil_pd.zona_metropolitana_new ZM
         ON (CACY.ciudad = ZM.municipio OR
             (CACY.ciudad = 'Puebla' AND ZM.municipio = 'Puebla de Zaragoza')
             OR (CACY.ciudad = 'Hermosillo ' AND ZM.municipio = 'Hermosillo')
@@ -339,7 +339,7 @@ ORDER BY month;
     df_mau_zm = client.query(query).to_dataframe()
     return df_mau_zm
 
-zona_metropolinata = ['ZM Puebla', 'ZM Monterrey', 'ZM León', 'ZM Hermosillo', 'ZM Guadalajara', 'ZM TIjuana',
+zona_metropolinata = ['ZM Puebla', 'ZM Monterrey', 'ZM León', 'ZM Hermosillo', 'ZM Guadalajara', 'ZM Tijuana', 'ZM CDMX',
                       'ZM Veracruz', 'ZM Cancún', 'ZM Chihuahua', 'ZM Tuxtla', 'ZM Querétaro', 'ZM Torreón', 'ZM Juárez']
 zona_metropolinata_seleccionada = st.selectbox('Selecciona una Zona Metropolitana:', zona_metropolinata)
 
