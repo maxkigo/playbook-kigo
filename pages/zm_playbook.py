@@ -266,16 +266,69 @@ GROUP BY zona_metropolitana
     df_avg = client.query(query).to_dataframe()
     return df_avg
 
+
+
 def plot_mau(zona_metropolitana):
     # Obtener los datos de MAU
     df_mau = zm_playbook(zona_metropolitana)
+    df_mau = df_mau[df_mau['month'] < df_mau['month'].max()]
+    # Añadir un año ficticio para la conversión
+    df_mau['month'] = pd.to_datetime(df_mau['month'].astype(str) + '-01-2024', format='%m-%d-%Y')
 
-    # Crear la gráfica de barras
-    fig = px.line(df_mau, x='month', y='MAU', color='zona_metropolitana',
-                 title=f"Monthly Active Users en {zona_metropolitana}",
-                 labels={'month': 'Mes', 'MAU': 'Monthly Active Users', 'zona_metropolitana': 'Zona Metropolitana'})
+    # Filtrar el DataFrame para excluir el mes actual
+    current_month = pd.to_datetime('today').replace(day=1)
+
+    # Crear la serie temporal mensual
+    df_mau.set_index('month', inplace=True)
+    df_mau.sort_index(inplace=True)
+
+
+    # Ajustar el modelo ARIMA
+    model = ARIMA(df_mau['MAU'], order=(1, 1, 1))  # Puedes ajustar los parámetros (p,d,q) según sea necesario
+    model_fit = model.fit()
+
+    # Generar predicciones para el mes actual y los siguientes 2 meses
+    forecast_steps = 3
+    forecast = model_fit.get_forecast(steps=forecast_steps)
+    forecast_index = pd.date_range(start=current_month, periods=forecast_steps, freq='MS')
+    forecast_df = pd.DataFrame({
+        'month': forecast_index,
+        'forecast': forecast.predicted_mean,
+        'conf_int_lower': forecast.conf_int().iloc[:, 0],
+        'conf_int_upper': forecast.conf_int().iloc[:, 1]
+    })
+
+    # Imprimir los datos de la proyección para verificar
+    print("Datos de la proyección:")
+    print(forecast_df)
+
+    # Graficar los datos históricos y la proyección
+    fig = go.Figure()
+
+    # Gráfico de los datos históricos
+    fig.add_trace(go.Scatter(x=df_mau.index, y=df_mau['MAU'], mode='lines+markers', name='Histórico MAU'))
+
+    # Gráfico de la proyección
+    fig.add_trace(go.Scatter(x=forecast_df['month'], y=forecast_df['forecast'], mode='lines+markers', name='Proyección MAU', line=dict(dash='dash')))
+    fig.add_trace(go.Scatter(
+        x=pd.concat([forecast_df['month'], forecast_df['month'][::-1]]),
+        y=pd.concat([forecast_df['conf_int_lower'], forecast_df['conf_int_upper'][::-1]]),
+        fill='toself',
+        fillcolor='rgba(0,100,80,0.2)',
+        line=dict(color='rgba(255,255,255,0)'),
+        name='Intervalo de Confianza',
+        showlegend=False
+    ))
+
+    fig.update_layout(
+        title=f"Monthly Active Users en {zona_metropolitana}",
+        xaxis_title='Mes',
+        yaxis_title='Monthly Active Users',
+        xaxis=dict(type='date')
+    )
 
     return fig
+
 
 def mau_proyecto_zm(zona_metropolitana):
     query = f"""
@@ -377,10 +430,9 @@ fig_poblacion.update_traces(title_font=dict(size=14))
 fig_poblacion.update_traces(gauge=dict(axis=dict(tickcolor="#F24405", tick0=2)))
 
 fig_per_mau = go.Figure(go.Indicator(
-    mode = "number+gauge+delta",
-    gauge = {'shape': "bullet"},
+    mode = "number+delta",
     delta = {'reference': (df_poblacion_zm['poblacion'].iloc[0] * .03)},
-    value = df_mau_general['MAU'].iloc[-2],
+    value = df_mau_general['MAU'].iloc[-1],
     domain = {'x': [0.1, 1], 'y': [0.2, 0.9]},
     title = {'text': "3% MAU"}))
 fig_per_mau.update_layout(
@@ -402,10 +454,9 @@ def create_indicator(df_mau_general, df_multi_zm):
         return None  # No mostrar nada si no hay suficientes datos
 
     fig_multi = go.Figure(go.Indicator(
-        mode="number+gauge+delta",
-        gauge={'shape': "bullet"},
-        delta={'reference': (df_mau_general['MAU'].iloc[-2] * .3)},
-        value=df_multi_zm['users_multi'].iloc[-2],
+        mode="number+delta",
+        delta={'reference': (df_mau_general['MAU'].iloc[-1] * .3)},
+        value=df_multi_zm['users_multi'].iloc[-1],
         domain={'x': [0.1, 1], 'y': [0.2, 0.9]},
         title={'text': "30% MS"}
     ))

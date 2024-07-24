@@ -308,3 +308,4 @@ with col6:
     df_gmv_month = get_gmv_data_month(selected_month)
     fig_month = create_donut_sunburst_chart(df_gmv_month)
     st.plotly_chart(fig_month)
+
