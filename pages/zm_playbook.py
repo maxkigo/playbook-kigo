@@ -494,7 +494,7 @@ fig_avg = go.Figure(go.Indicator(
     mode="number",
     value=df_avg_opera['Promedio_Operaciones_Por_Usuario'].iloc[0],
     domain={'x': [0, 1], 'y': [0, 1]},
-    title={'text': "Población ZM", 'font': {'color': "#F24405"}, 'align': 'center'},
+    title={'text': "Promedio de Operaciones por Usuario", 'font': {'color': "#F24405"}, 'align': 'center'},
 ))
 
 fig_avg.update_layout(
