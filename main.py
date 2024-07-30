@@ -48,7 +48,7 @@ def mau_general():
     SELECT month, COUNT(DISTINCT user_id) AS MAU 
     FROM CombinetTable
     GROUP BY month
-    ORDER BY month;
+    ORDER BY month
     """
 
     df_mau_general = client.query(mau_general).to_dataframe()
