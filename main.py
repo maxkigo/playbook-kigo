@@ -342,7 +342,7 @@ proyectos_activos_mes = proyectos_activos_mes.iat[0, 0]
 descargas_abril = 72396
 descargas_marzo = 32350 + 39439
 descargas_junio = 35738 + 40632
-
+descargas_julio = 88928
 # ---------------------------------------------------------INDICADORES Y GRÁFICAS------------------------------------------------------------------------------------
 
 # INDICADOR MAU GENERAL
@@ -570,10 +570,10 @@ fig_proyectos.update_traces(gauge=dict(axis=dict(tickcolor="#F24405", tick0=2)))
 # Delta del Indicador
 fig_descargas = go.Figure(go.Indicator(
     mode="number",
-    value=descargas_junio,
+    value=descargas_julio,
     domain={'x': [0, 1], 'y': [0, 1]},
     title={'text': "Descargas", 'font': {'color': "#F24405"}, 'align': 'center'},
-    delta = {'position': "bottom", 'reference': descargas_marzo}
+    delta = {'position': "bottom", 'reference': descargas_junio}
 ))
 
 # Actualizar el diseño del indicador
