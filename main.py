@@ -328,7 +328,7 @@ def proyectos():
 
     SELECT COUNT(proyecto)
     FROM proyectos_activiti
-    WHERE operaciones > 50
+    WHERE operaciones > 20
     """
     proyectos_activos_mes = client.query(proyectos).to_dataframe()
     return proyectos_activos_mes
