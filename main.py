@@ -1108,28 +1108,7 @@ with col2:
         unsafe_allow_html=True
     )
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown(
-        '''
-        <div style="
-            border: 2px solid grey;
-            border-radius: 10px;
-            padding: 10px;
-            margin: 0 auto;
-            width: fit-content;
-            background-color: grey;
-        ">
-            <p style="
-                text-align: center; 
-                margin: 0; 
-                color: white; 
-                font-weight: bold;
-                font-size: 16px;
-            ">ZM Chihuahua</p>
-        </div>
-        ''',
-        unsafe_allow_html=True
-    )
-    st.markdown("<br>", unsafe_allow_html=True)
+
     st.markdown(
         '''
         <div style="
@@ -1289,6 +1268,28 @@ with col3:
         unsafe_allow_html=True
     )
     st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown(
+        '''
+        <div style="
+            border: 2px solid grey;
+            border-radius: 10px;
+            padding: 10px;
+            margin: 0 auto;
+            width: fit-content;
+            background-color: grey;
+        ">
+            <p style="
+                text-align: center; 
+                margin: 0; 
+                color: white; 
+                font-weight: bold;
+                font-size: 16px;
+            ">ZM Chihuahua</p>
+        </div>
+        ''',
+        unsafe_allow_html=True
+    )
+    st.markdown("<br>", unsafe_allow_html=True)
 
 with col4:
     st.markdown('<div class="custom-container"><h1 class="custom-title">Engagement</h1>', unsafe_allow_html=True)
